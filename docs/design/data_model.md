@@ -1,12 +1,11 @@
-# SECA 数据模型设计
+# SECA 数据模型体系设计
 
-## 1. 实体关系概述
-
-SECA 的核心业务对象围绕着**项目层级 (Project)**、**任务指令 (Task)** 和底层原子单位**执行轨迹 (Trace)** 构建，为后续复杂的错误根因回放及架构决策关联提供结构化基础。
+## 1. 全局图谱
+一切根源追溯于 Task (一次指令执行)。而 Agent 与底层的攻防博弈将被细化碎片在 Trace 表级。
 
 ```mermaid
 erDiagram
-    PROJECT ||--o{ TASK : contains
+    PROJECT ||--o{ TASK : manages
     TASK ||--o{ TRACE : records
     TASK ||--o{ ADR : generates
     TRACE ||--o{ DIAGNOSTIC_EVENT : triggers
@@ -14,53 +13,42 @@ erDiagram
     PROJECT {
         string id PK
         string name
-        string description
-        string local_repo_path
-        datetime created_at
+        string target_repo_path "所要管控和诊断的物理目录位"
     }
     
     TASK {
         string id PK
         string project_id FK
-        string objective
-        string status "PENDING|RUNNING|EVALUATING|DONE|FAILED"
-        datetime created_at
-        datetime updated_at
+        text raw_objective "用户的原语目的"
+        string status "PENDING|RUNNING|ANALYZING|DONE|FAILED"
+        datetime started_at
     }
     
     TRACE {
         string id PK
         string task_id FK
-        string parent_trace_id FK "支持回放树结构分叉"
-        string agent_role "planner|generator|evaluator"
-        string prompt_snapshot
-        text perception_log
-        text reasoning_log
-        text generated_code
-        string execution_result 
-        boolean is_success
-        datetime timestamp
+        string parent_trace_id FK "【重核】支撑逻辑回溯图的基础因果链指针"
+        string agent_role "谁在发起的思考"
+        text perception_log "观测与环境收集的数据"
+        text reasoning_log "权衡策略推导数据"
+        text applied_patch "做出的 DIFF 或者 Command"
+        boolean is_success "这步执行沙箱评价是否成功"
     }
     
     DIAGNOSTIC_EVENT {
         string id PK
-        string trace_id FK
-        string error_type "SYNTAX|RUNTIME|TEST_FAIL|LINT"
-        text raw_stderr
-        text injected_improvement
+        string trace_id FK "这属于哪一步踩雷产生的拦截"
+        string error_type "SYN|TIMEOUT|HUNG|LOGIC"
+        text raw_stderr "生胶囊级抓取"
     }
     
     ADR {
         string id PK
         string task_id FK
-        string title
-        text decision
-        text context_and_consequences
-        string status "PROPOSED|ACCEPTED|REJECTED"
-        datetime timestamp
+        string brief_title
+        text generated_markdown_payload "产出的制度全文结构资产"
     }
 ```
 
-## 2. 字段生命周期说明
-- `TRACE.parent_trace_id` 构成了系统能以树状图形回溯展示（Post-mortem Playback）的基石。在试错中，每当产生代码错误并回退修正时，在此节点派生新的 trace 子节点即可。
-- `DIAGNOSTIC_EVENT` 为动态元优化提供基础，该表统计了 Agent 跌倒重灾区错误情况，能供机器学习长期反馈分析（资本效率与诊断 ROI）。
+## 2. 数据字典流传点核说
+- `TRACE.parent_trace_id`: 此处若为空则代表这步是从 Task根级开启的首层探讨。若尝试修 A bug 失败，Agent 退回到 A 节点前重新选择修 B，则它派生的子类也会同样以该父节点指向自己，实现 DAG 有向无环图关联，这是产品 Playback 回放流的心脏字段。

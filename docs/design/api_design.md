@@ -1,38 +1,26 @@
-# SECA API 接口设计
+# SECA API 信令层约定
 
-全部基于 RESTful 规范定义后端路由集合，由 FastAPI （遵循 OpenAPI）提供支持。
+在底层开发阶段，全部使用 FastAPI 做 OpenAPI(Swagger) 原生支撑规范并限制强类型（Pydantic Validation）。
 
-## 1. 项目与环境管理 (Project API)
-- `GET /api/v1/projects`
-  - 功能：获取当前接管的全部项目清单
-  - 响应：`Array<Project>`
-- `POST /api/v1/projects`
-  - 功能：初始化新工作区设定环境
-  - 负载：`{ "name": string, "repo_path": string }`
-- `GET /api/v1/projects/{project_id}/health`
-  - 功能：针对该工程检测沙箱支持环境（如 Python版本、NPM准备就绪状态）
+## 1. 环境层基底 (Projects Management)
+- `GET /api/v1/projects`: 列装并盘点所有当前在接管监控的目录。
+- `POST /api/v1/projects`: 下发一个 `local_repo_path` 注册并接管一个新的物理靶场。
 
-## 2. 任务流控调度 (Task Control API)
-- `GET /api/v1/tasks?project_id={id}`
-  - 功能：查询任务历史列表页
-- `POST /api/v1/tasks`
-  - 功能：下发生成/重构/分析等高级命令
-  - 负载：`{ "objective": "修复用户登录验证的内存泄漏" }`
-- `POST /api/v1/tasks/{task_id}/pause`
-  - 功能：当消耗异常 Token 或者诊断陷入死循环时强制打断阻断。
+## 2. 控制流引擎 (Tasks Controller)
+- `POST /api/v1/tasks`: 发射高级长指令给统筹 Orchestrator。
+- `GET /api/v1/tasks/{task_id}/state`: 获得此项任务的是否休眠、进行中、或挂停在致命错误的静态心跳检测值。
+- `POST /api/v1/tasks/{task_id}/kill`: 人工打断任务执行的高优阻塞弹窗令。（避免死循环耗费天文级 Token 灾难）
 
-## 3. 核心内省流 (Introspection Stream API)
-- `GET /api/v1/tasks/{task_id}/stream`
-  - **重要度**：极高
-  - 功能：使用 `Server-Sent Events (SSE)` (Content-Type: text/event-stream) 提供毫秒级实时 Agent 推流。
-  - Payload Packet 示例：`{"type": "REASONING", "log": "Considering alternative logic flow...", "timestamp": "2026-T12..."}`
-- `GET /api/v1/tasks/{task_id}/tree`
-  - 功能：一次性提取完整逻辑分叉 Trace 图谱 (用于 Dashboard 回溯)。
-  - 返回完整具备 parent_id 的平级数组以渲染 DAG 树。
+## 3. 核心内省流推送网 (Introspection Streaming Node)
+- `GET /api/v1/tasks/{task_id}/stream`:
+  - 核心承载，返回 Content-Type 为 `text/event-stream` 的原生持续流下发通道 (Server-Sent Events)。
+  - 规定流下发规范：每次传递以 `\n\n` 间隔的事件段，例如:
+    ```javascript
+    event: reasoning
+    data: {"timestamp": 111111, "message": "发现这里是一个深度地柜引起的挂栈，正考虑引入尾调用机制..."}
+    ```
+- `GET /api/v1/tasks/{task_id}/dag-tree`: 
+  - (为回溯屏页面特供的接口)。后端将零散拉平成关系数组 `[]` 的 Trace 从数据库中检索出，在此一次性用算法重构合并成树形的 `{ id, children: [ {id, children} ] }` 标准 JSON 对象给前端页面直接递归吃入使用。
 
-## 4. 知识/资产 (Assets API)
-- `GET /api/v1/adrs?project_id={id}`
-  - 功能：检出生成的全部 ADR 文档内容。
-  - 响应：富文本 Markdown Object 对象集。
-- `GET /api/v1/metrics/roi`
-  - 功能：资本效率统计数据暴露端点，返回消耗 Token 与修复 Bug 数量的比值。
+## 4. 知识回收器 (Knowledge Endpoints)
+- `GET /api/v1/adrs`: 汇总导出或索引这所产线下的各种遗留沉淀文档。
