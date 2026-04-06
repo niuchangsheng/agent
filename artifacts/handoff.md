@@ -5,17 +5,17 @@
 - **更新方身份**: `/run` 宏控制器 (驱动了 Generator 和 Evaluator)
 
 ## 当前游标与系统状态
-- **核心阶段落点**: **Sprint 2 (Subprocess 动态诊断沙箱引擎)** 已彻底通关结项。
+- **核心阶段落点**: **Sprint 3 (打字机内省视界构建)** 已达成并顺利并入主干。
 - **目标执行体进展**:
-  - `src/backend/app/sandbox.py` 借由 `asyncio.create_subprocess_shell` 完善了安全的底层接管逻辑，处理了异常 `stderr` 及 `is_timeout` 等安全脱产状态标识。
-  - 完成了 `/api/v1/projects` 和 `/api/v1/tasks` 两个控制流路由，可正常往 SQLite 通过异步 ORM 落盘数据。
-  - Generator 的新模块测试案例 `test_sandbox.py` 和 `test_tasks.py` 100%覆盖并通过，写入了架构决策（ADR-002：Subprocess的沙盒方案替代方案）。
-  - Evaluator 下发 `[x]` 令牌，Sprint 2 宣告完成。
+  - `src/backend/app/main.py` 已增加使用 `StreamingResponse` 与异步 Generator 下发标准的 `text/event-stream` SSE 载荷的能力。
+  - 前端工程内成功引装了 TailwindCSS。
+  - 核心组件 `<Dashboard />` 实现：落地了约定的毛玻璃质感与炫酷冷深基调 Hacker 样式，并完美解绑了挂接由后端推送上来的 `TraceEvent` 序列集。
+  - 架构决议留存：签发了对于选用 SSE 而抛弃 Websocket 的设计探讨（[ADR-003]）。
 
 ## 关键架构与约定回顾
-- **最近的关键决策落子**: [ADR-002] 使用 Subprocess 隔离替代 Docker 沙箱执行，保障推演阶段的速度流转避免僵尸进程。
-- **待攻克的难题/未完成清单**: 下一战：**Sprint 3** (实施将流媒体数据通过 SSE `Server-Sent Events` 传输到前端以呈现真正的酷炫的内省控制面板)。
+- **最近的关键决策落子**: [ADR-003] 确定了前后端单向汇报通讯层采用更轻、且具备原生重连的 `Server-Sent Events (SSE)` 协议。
+- **待攻克的难题/未完成清单**: 前端虽然流转顺畅，但仅为一维平推流。随着即将到来的 **Sprint 4**，我们将攻坚前端最核心复杂的难题之一：基于后端的全量快照，绘制 DAG（有向无环逻辑链图）的 Playback 回溯渲染墙。
 
 ## 下游行动建议 (Action Requested)
-- **对于 AI**: 等待唤醒。
-- **对于人类**: 第二段“硬骨头”（诊断外壳和进程隔离）已被完美斩落。如果希望继续看到基于这套内核输出前端呈现面板的功能流片（Sprint 3），请继续输入 **“ `/run` ”** 推动流水线狂飙！
+- **对于 AI**: 等待唤醒以继续推进。
+- **对于人类**: 恭喜！第三次循环大获成功。现在你能够使用最极客感十足的监控屏看到它的推演思考历程。接下来将是重头戏，如果你准备好了看看它如果摔倒后撤回如何被用流程图画出来，请发出指令号角： **“ `/run` ”**！

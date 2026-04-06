@@ -1,10 +1,9 @@
 import asyncio
 from typing import AsyncGenerator
-from contextlib import asynccontextmanager
-
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Depends
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.exceptions import RequestValidationError
+from contextlib import asynccontextmanager
 from sqlmodel import SQLModel
 
 from app.database import engine, get_db_session
@@ -49,6 +48,17 @@ async def create_task(task_in: TaskCreate, session: AsyncSession = Depends(get_d
     await session.commit()
     await session.refresh(db_task)
     return db_task
+
+@app.get("/api/v1/tasks/{task_id}/stream")
+async def stream_task_events(task_id: int):
+    async def event_generator():
+        # Yield an initial heartbeat or status payload
+        yield f"data: {{\"type\": \"status\", \"content\": \"Connected to stream for {task_id}\"}}\n\n"
+        # Simulate agent execution flow for testing
+        await asyncio.sleep(0.1)
+        yield f"data: {{\"type\": \"perception\", \"content\": \"Started analysis...\"}}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @app.exception_handler(404)
 async def custom_404_handler(request, exc):
