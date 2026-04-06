@@ -86,6 +86,51 @@ async def get_task_dag_tree(task_id: int, session: AsyncSession = Depends(get_db
                 
     return JSONResponse(content=roots, status_code=200)
 
+@app.post("/api/v1/tasks/{task_id}/generate-adr")
+async def generate_task_adr(task_id: int, session: AsyncSession = Depends(get_db_session)):
+    import os
+    from app.models import Trace, Task, Adr
+
+    task_result = await session.execute(select(Task).where(Task.id == task_id))
+    task = task_result.scalar_one_or_none()
+    if not task:
+        return JSONResponse(status_code=404, content={"detail": "Task missing"})
+
+    trace_result = await session.execute(select(Trace).where(Trace.task_id == task_id))
+    traces = trace_result.scalars().all()
+    
+    # We only care about passes for generating "learned" solution ADR, 
+    # but could include failures as anti-patterns in a real LLM. For mock, we simply aggregate applied_patch.
+    success_patches = [t.applied_patch for t in traces if t.is_success and t.applied_patch]
+    
+    markdown_content = f"""# ADR Auto-Generated for Task {task_id}
+    
+## Context
+System encountered a task: {task.raw_objective}.
+Below are successful patches applied during dynamic sandbox tracing:
+
+{"".join(f"- {p}\\n" for p in success_patches)}
+    """
+    
+    adr = Adr(
+        task_id=task_id, 
+        brief_title=f"Decisions for {task_id}", 
+        generated_markdown_payload=markdown_content
+    )
+    session.add(adr)
+    await session.commit()
+    await session.refresh(adr)
+    
+    # Physical File Down sync
+    storage_path = os.getenv("ADR_STORAGE_PATH", "../../artifacts/decisions")
+    os.makedirs(storage_path, exist_ok=True)
+    file_path = os.path.join(storage_path, f"ADR-{adr.id:03d}.md")
+    
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(markdown_content)
+
+    return adr.model_dump()
+
 @app.exception_handler(404)
 async def custom_404_handler(request, exc):
     return JSONResponse(status_code=404, content={"detail": "Not Found"})

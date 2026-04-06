@@ -53,7 +53,7 @@
 - [x] Sprint 2: 实现 Feature 1 — Subprocess 动态包裹沙箱实现以及 Task / Trace 的核心数据流打通存储。
 - [x] Sprint 3: 实现 Feature 2 — SSE 服务器下发推送和以 Glassmorphism 为核心审美基调的前端打字机接收终端面板。
 - [x] Sprint 4: 实现 Feature 3 — 引入 Mermaid/D3 在前端承揽后台组合吐出的结构树 JSON 进行图谱渲染和差分面板点选功能。
-- [ ] Sprint 5: 实现 Feature 4 — 结合全量回溯痕迹打造自动生成与挂载 ADR Markdown 文件的工作流节点。
+- [x] Sprint 5: 实现 Feature 4 — 结合全量回溯痕迹打造自动生成与挂载 ADR Markdown 文件的工作流节点。
 
 ## 整体项目竣工结项标准 (Definition of Done)
 
