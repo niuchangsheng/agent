@@ -63,8 +63,8 @@ async def stream_task_events(task_id: int):
 @app.get("/api/v1/tasks/{task_id}/dag-tree")
 async def get_task_dag_tree(task_id: int, session: AsyncSession = Depends(get_db_session)):
     from app.models import Trace
-    result = await session.execute(select(Trace).where(Trace.task_id == task_id))
-    traces = result.scalars().all()
+    result = await session.exec(select(Trace).where(Trace.task_id == task_id))
+    traces = result.all()
     
     if not traces:
         return JSONResponse(content=[], status_code=200)
@@ -91,13 +91,13 @@ async def generate_task_adr(task_id: int, session: AsyncSession = Depends(get_db
     import os
     from app.models import Trace, Task, Adr
 
-    task_result = await session.execute(select(Task).where(Task.id == task_id))
-    task = task_result.scalar_one_or_none()
+    task_result = await session.exec(select(Task).where(Task.id == task_id))
+    task = task_result.one_or_none()
     if not task:
         return JSONResponse(status_code=404, content={"detail": "Task missing"})
 
-    trace_result = await session.execute(select(Trace).where(Trace.task_id == task_id))
-    traces = trace_result.scalars().all()
+    trace_result = await session.exec(select(Trace).where(Trace.task_id == task_id))
+    traces = trace_result.all()
     
     # We only care about passes for generating "learned" solution ADR, 
     # but could include failures as anti-patterns in a real LLM. For mock, we simply aggregate applied_patch.
