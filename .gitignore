@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+ENV/
+env/
+.env
+
+# Database
+*.db
+*.sqlite3
+
+# Node.js
+node_modules/
+dist/
+build/
+.next/
+out/
+npm-debug.log*
+
+# System
+.DS_Store
+Thumbs.db
+
+# Project-specific
+artifacts/tmp/
+*.log
