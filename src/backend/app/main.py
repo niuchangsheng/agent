@@ -41,6 +41,11 @@ async def create_project(proj: ProjectCreate, session: AsyncSession = Depends(ge
     await session.refresh(db_proj)
     return db_proj
 
+@app.get("/api/v1/tasks")
+async def list_tasks(session: AsyncSession = Depends(get_db_session)):
+    result = await session.exec(select(Task).order_by(Task.id.desc()).limit(10))
+    return result.all()
+
 @app.post("/api/v1/tasks")
 async def create_task(task_in: TaskCreate, session: AsyncSession = Depends(get_db_session)):
     db_task = Task(project_id=task_in.project_id, raw_objective=task_in.raw_objective)
