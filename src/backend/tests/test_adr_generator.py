@@ -12,7 +12,7 @@ from app.models import Project, Task, Trace, Adr
 async def test_adr_generation_flow(tmp_path):
     # Setup test env and point physical writer path to tmp_path
     os.environ["ADR_STORAGE_PATH"] = str(tmp_path)
-    
+
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
@@ -33,18 +33,26 @@ async def test_adr_generation_flow(tmp_path):
         session.add(t_pass)
         await session.commit()
 
-    # Trigger Generation
+    # Trigger Generation - requires API key
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.post(f"/api/v1/tasks/{t_id}/generate-adr")
+        # Get API key
+        key_res = await client.post("/api/v1/auth/api-keys", json={
+            "name": "TestKey",
+            "permissions": ["read", "write"]
+        })
+        api_key = key_res.json()["key"]
+        headers = {"X-API-Key": api_key}
+
+        response = await client.post(f"/api/v1/tasks/{t_id}/generate-adr", headers=headers)
         assert response.status_code == 200
         data = response.json()
         assert "weakref" in data["generated_markdown_payload"]
         adr_id = data["id"]
         assert adr_id is not None
-        
+
         # Verify physical file existence
         expected_file = tmp_path / f"ADR-{adr_id:03d}.md"
         assert expected_file.exists()
-        
+
         content = expected_file.read_text()
         assert "weakref" in content

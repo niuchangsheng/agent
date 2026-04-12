@@ -3,6 +3,7 @@ import Dashboard from './components/Dashboard';
 import PlaybackTree from './components/PlaybackTree';
 import ConfigPanel from './components/ConfigPanel';
 import TaskQueueDashboard from './components/TaskQueueDashboard';
+import ApiKeyManager from './components/ApiKeyManager';
 
 interface Task {
   id: number;
@@ -15,7 +16,7 @@ function App() {
   const [status, setStatus] = useState<string>('Detecting...');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'config' | 'queue'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'queue' | 'config' | 'auth'>('dashboard');
 
   useEffect(() => {
     fetch('/api/v1/health')
@@ -83,7 +84,7 @@ function App() {
               : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
           }`}
         >
-          📊 Dashboard
+          Dashboard
         </button>
         <button
           onClick={() => setActiveTab('queue')}
@@ -93,7 +94,7 @@ function App() {
               : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
           }`}
         >
-          📋 Task Queue
+          Task Queue
         </button>
         <button
           onClick={() => setActiveTab('config')}
@@ -103,7 +104,17 @@ function App() {
               : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
           }`}
         >
-          ⚙️ Configuration
+          Configuration
+        </button>
+        <button
+          onClick={() => setActiveTab('auth')}
+          className={`px-4 py-2 rounded font-medium transition-colors ${
+            activeTab === 'auth'
+              ? 'bg-emerald-600 text-white'
+              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+          }`}
+        >
+          API Keys
         </button>
       </div>
 
@@ -116,9 +127,11 @@ function App() {
             </div>
           ) : activeTab === 'queue' ? (
             <TaskQueueDashboard />
-          ) : (
+          ) : activeTab === 'config' ? (
             <ConfigPanel projectId={tasks.find(t => t.id === selectedTaskId)?.project_id || 0} />
-          )}
+          ) : activeTab === 'auth' ? (
+            <ApiKeyManager />
+          ) : null}
         </div>
       ) : (
         <div className="text-slate-500">No tasks available. Create a task to begin.</div>

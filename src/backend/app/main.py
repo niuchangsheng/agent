@@ -1,5 +1,5 @@
 import asyncio
-from typing import AsyncGenerator
+from typing import AsyncGenerator, List
 from fastapi import FastAPI, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.exceptions import RequestValidationError
@@ -10,8 +10,9 @@ from typing import Optional, Dict
 from datetime import datetime, timezone
 
 from app.database import engine, get_db_session
-from app.models import Project, Task, ProjectConfig
+from app.models import Project, Task, ProjectConfig, APIKey, AuditLog
 from app.task_queue import global_queue
+from app.auth import require_write_key, generate_api_key, hash_api_key
 from pydantic import BaseModel, Field
 from fastapi import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -45,6 +46,19 @@ class ProjectConfigUpdate(BaseModel):
     max_memory_mb: Optional[int] = Field(None, ge=128, le=2048)
     environment_variables: Optional[Dict[str, str]] = None
 
+class APIKeyCreate(BaseModel):
+    name: str
+    permissions: List[str] = Field(default_factory=list)
+    expires_at: Optional[datetime] = None
+
+class APIKeyResponse(BaseModel):
+    id: int
+    name: str
+    permissions: List[str]
+    created_at: datetime
+    expires_at: Optional[datetime]
+    is_active: bool
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     async with engine.begin() as conn:
@@ -59,11 +73,27 @@ async def health_check():
     return {"status": "active"}
 
 @app.post("/api/v1/projects")
-async def create_project(proj: ProjectCreate, session: AsyncSession = Depends(get_db_session)):
+async def create_project(
+    proj: ProjectCreate,
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """创建项目 - 需要写权限"""
     db_proj = Project(name=proj.name, target_repo_path=proj.target_repo_path)
     session.add(db_proj)
     await session.commit()
     await session.refresh(db_proj)
+
+    # 记录审计日志
+    audit_log = AuditLog(
+        user_id=api_key.id,
+        action="CREATE",
+        resource="/api/v1/projects",
+        details={"name": proj.name}
+    )
+    session.add(audit_log)
+    await session.commit()
+
     return db_proj
 
 @app.get("/api/v1/tasks")
@@ -72,7 +102,12 @@ async def list_tasks(session: AsyncSession = Depends(get_db_session)):
     return result.all()
 
 @app.post("/api/v1/tasks")
-async def create_task(task_in: TaskCreate, session: AsyncSession = Depends(get_db_session)):
+async def create_task(
+    task_in: TaskCreate,
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """创建任务 - 需要写权限"""
     db_task = Task(project_id=task_in.project_id, raw_objective=task_in.raw_objective)
     session.add(db_task)
     await session.commit()
@@ -117,7 +152,12 @@ async def get_task_dag_tree(task_id: int, session: AsyncSession = Depends(get_db
     return JSONResponse(content=roots, status_code=200)
 
 @app.post("/api/v1/tasks/{task_id}/generate-adr")
-async def generate_task_adr(task_id: int, session: AsyncSession = Depends(get_db_session)):
+async def generate_task_adr(
+    task_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """生成 ADR - 需要写权限"""
     import os
     from app.models import Trace, Task, Adr
 
@@ -165,9 +205,10 @@ Below are successful patches applied during dynamic sandbox tracing:
 async def create_project_config(
     project_id: int,
     config_in: ProjectConfigCreate,
-    session: AsyncSession = Depends(get_db_session)
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
 ):
-    """创建项目配置"""
+    """创建项目配置 - 需要写权限"""
     # 验证项目存在
     project = await session.get(Project, project_id)
     if not project:
@@ -206,9 +247,10 @@ async def get_project_config(
 async def update_project_config(
     project_id: int,
     config_in: ProjectConfigUpdate,
-    session: AsyncSession = Depends(get_db_session)
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
 ):
-    """更新项目配置"""
+    """更新项目配置 - 需要写权限"""
     result = await session.exec(select(ProjectConfig).where(ProjectConfig.project_id == project_id))
     config = result.one_or_none()
     if not config:
@@ -237,9 +279,10 @@ import uuid
 @app.post("/api/v1/tasks/queue")
 async def queue_task(
     task_in: TaskQueueCreate,
-    session: AsyncSession = Depends(get_db_session)
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
 ):
-    """提交任务到队列"""
+    """提交任务到队列 - 需要写权限"""
     # 验证项目存在
     project = await session.get(Project, task_in.project_id)
     if not project:
@@ -270,9 +313,10 @@ async def get_queue_status():
 @app.delete("/api/v1/tasks/queue/{task_id}")
 async def cancel_queued_task(
     task_id: int,
-    session: AsyncSession = Depends(get_db_session)
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
 ):
-    """取消队列中的任务"""
+    """取消队列中的任务 - 需要写权限"""
     task = await session.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -306,9 +350,10 @@ async def get_task_progress(
 async def update_task_progress(
     task_id: int,
     progress_in: TaskProgressUpdate,
-    session: AsyncSession = Depends(get_db_session)
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
 ):
-    """更新任务进度"""
+    """更新任务进度 - 需要写权限"""
     task = await session.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -327,9 +372,10 @@ async def update_task_progress(
 async def complete_task(
     task_id: int,
     complete_in: TaskComplete,
-    session: AsyncSession = Depends(get_db_session)
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
 ):
-    """标记任务为完成"""
+    """标记任务为完成 - 需要写权限"""
     task = await session.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -351,9 +397,10 @@ async def complete_task(
 async def simulate_worker_crash(
     task_id: int,
     crash_in: dict,
-    session: AsyncSession = Depends(get_db_session)
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
 ):
-    """模拟 Worker 崩溃 - 任务重新入队"""
+    """模拟 Worker 崩溃 - 需要写权限"""
     task = await session.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -387,3 +434,83 @@ async def process_queue(session: AsyncSession):
 @app.exception_handler(404)
 async def custom_404_handler(request, exc):
     return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+# ============== Sprint 8: Auth & Audit Endpoints ==============
+
+from app.auth import hash_api_key, generate_api_key, require_write_key
+
+@app.post("/api/v1/auth/api-keys")
+async def create_api_key(
+    key_in: APIKeyCreate,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """创建 API Key"""
+    raw_key = generate_api_key()
+    key_hash = hash_api_key(raw_key)
+
+    db_key = APIKey(
+        name=key_in.name,
+        key_hash=key_hash,
+        permissions=key_in.permissions,
+        expires_at=key_in.expires_at
+    )
+    session.add(db_key)
+    await session.commit()
+    await session.refresh(db_key)
+
+    return {
+        "id": db_key.id,
+        "key": raw_key,  # 仅在创建时返回一次
+        "name": db_key.name,
+        "permissions": db_key.permissions,
+        "created_at": db_key.created_at,
+        "expires_at": db_key.expires_at
+    }
+
+@app.get("/api/v1/auth/api-keys")
+async def list_api_keys(session: AsyncSession = Depends(get_db_session)):
+    """列出所有活跃的 API Key"""
+    result = await session.exec(select(APIKey).where(APIKey.is_active == True).order_by(APIKey.id.desc()))
+    keys = result.all()
+    return [
+        {
+            "id": k.id,
+            "name": k.name,
+            "permissions": k.permissions,
+            "created_at": k.created_at,
+            "expires_at": k.expires_at,
+            "is_active": k.is_active
+        }
+        for k in keys
+    ]
+
+@app.delete("/api/v1/auth/api-keys/{key_id}")
+async def delete_api_key(
+    key_id: int,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """删除 API Key"""
+    key = await session.get(APIKey, key_id)
+    if not key:
+        raise HTTPException(status_code=404, detail="API Key not found")
+
+    key.is_active = False
+    await session.commit()
+    return {"status": "deleted", "id": key_id}
+
+@app.get("/api/v1/audit-logs")
+async def list_audit_logs(session: AsyncSession = Depends(get_db_session)):
+    """列出审计日志"""
+    result = await session.exec(select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(100))
+    logs = result.all()
+    return [
+        {
+            "id": l.id,
+            "user_id": l.user_id,
+            "action": l.action,
+            "resource": l.resource,
+            "timestamp": l.timestamp,
+            "ip_address": l.ip_address
+        }
+        for l in logs
+    ]

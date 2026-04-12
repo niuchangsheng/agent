@@ -9,6 +9,15 @@ from app.main import app
 class TestProjectConfig:
     """Sprint 6: 配置管理中心测试套件"""
 
+    async def _get_api_key_header(self, client):
+        """获取带写权限的 API Key 请求头"""
+        key_res = await client.post("/api/v1/auth/api-keys", json={
+            "name": "TestKey",
+            "permissions": ["read", "write"]
+        })
+        api_key = key_res.json()["key"]
+        return {"X-API-Key": api_key}
+
     async def test_config_create_and_get(self):
         """Green 路径：创建并获取配置"""
         from app.database import engine
@@ -18,11 +27,13 @@ class TestProjectConfig:
 
         from httpx import ASGITransport
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await self._get_api_key_header(client)
+
             # 创建项目
             proj_res = await client.post("/api/v1/projects", json={
                 "name": "TestProj",
                 "target_repo_path": "./test"
-            })
+            }, headers=headers)
             proj_id = proj_res.json()["id"]
 
             # 创建配置
@@ -31,13 +42,13 @@ class TestProjectConfig:
                 "max_memory_mb": 1024,
                 "environment_variables": {"API_KEY": "test123", "DEBUG": "true"}
             }
-            config_res = await client.post(f"/api/v1/projects/{proj_id}/config", json=config_data)
+            config_res = await client.post(f"/api/v1/projects/{proj_id}/config", json=config_data, headers=headers)
             assert config_res.status_code == 200
             result = config_res.json()
             assert result["sandbox_timeout_seconds"] == 45
             assert result["max_memory_mb"] == 1024
 
-            # 获取配置
+            # 获取配置 (读操作无需 API Key)
             get_res = await client.get(f"/api/v1/projects/{proj_id}/config")
             assert get_res.status_code == 200
             get_result = get_res.json()
@@ -53,11 +64,13 @@ class TestProjectConfig:
 
         from httpx import ASGITransport
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await self._get_api_key_header(client)
+
             # 创建项目
             proj_res = await client.post("/api/v1/projects", json={
                 "name": "TestProj2",
                 "target_repo_path": "./test2"
-            })
+            }, headers=headers)
             proj_id = proj_res.json()["id"]
 
             # 创建初始配置
@@ -65,7 +78,7 @@ class TestProjectConfig:
                 "sandbox_timeout_seconds": 30,
                 "max_memory_mb": 512,
                 "environment_variables": {}
-            })
+            }, headers=headers)
 
             # 更新配置
             update_data = {
@@ -73,7 +86,7 @@ class TestProjectConfig:
                 "max_memory_mb": 2048,
                 "environment_variables": {"NEW_VAR": "value"}
             }
-            update_res = await client.put(f"/api/v1/projects/{proj_id}/config", json=update_data)
+            update_res = await client.put(f"/api/v1/projects/{proj_id}/config", json=update_data, headers=headers)
             assert update_res.status_code == 200
             result = update_res.json()
             assert result["sandbox_timeout_seconds"] == 60
@@ -84,7 +97,7 @@ class TestProjectConfig:
         """Red 路径：项目不存在时返回 404"""
         from httpx import ASGITransport
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            # 获取不存在的配置
+            # 获取不存在的配置 (读操作无需认证)
             res = await client.get("/api/v1/projects/99999/config")
             assert res.status_code == 404
 
@@ -92,23 +105,31 @@ class TestProjectConfig:
         """Red 路径：无效 project_id 创建失败"""
         from httpx import ASGITransport
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await self._get_api_key_header(client)
             # 创建配置到不存在的项目
             config_res = await client.post("/api/v1/projects/99999/config", json={
                 "sandbox_timeout_seconds": 30,
                 "max_memory_mb": 512,
                 "environment_variables": {}
-            })
+            }, headers=headers)
             assert config_res.status_code == 400
 
     async def test_config_timeout_out_of_range(self):
         """Red 路径：超时超出范围验证"""
+        from app.database import engine
+        async with engine.begin() as conn:
+            from sqlmodel import SQLModel
+            await conn.run_sync(SQLModel.metadata.create_all)
+
         from httpx import ASGITransport
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await self._get_api_key_header(client)
+
             # 创建项目
             proj_res = await client.post("/api/v1/projects", json={
                 "name": "TestProj3",
                 "target_repo_path": "./test3"
-            })
+            }, headers=headers)
             proj_id = proj_res.json()["id"]
 
             # 超时设置为 0 (小于最小值 1)
@@ -116,7 +137,7 @@ class TestProjectConfig:
                 "sandbox_timeout_seconds": 0,
                 "max_memory_mb": 512,
                 "environment_variables": {}
-            })
+            }, headers=headers)
             assert config_res.status_code == 422  # 验证错误
 
             # 超时设置为 1000 (大于最大值 60)
@@ -124,18 +145,25 @@ class TestProjectConfig:
                 "sandbox_timeout_seconds": 1000,
                 "max_memory_mb": 512,
                 "environment_variables": {}
-            })
+            }, headers=headers)
             assert config_res.status_code == 422
 
     async def test_config_memory_out_of_range(self):
         """Red 路径：内存超出范围验证"""
+        from app.database import engine
+        async with engine.begin() as conn:
+            from sqlmodel import SQLModel
+            await conn.run_sync(SQLModel.metadata.create_all)
+
         from httpx import ASGITransport
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await self._get_api_key_header(client)
+
             # 创建项目
             proj_res = await client.post("/api/v1/projects", json={
                 "name": "TestProj4",
                 "target_repo_path": "./test4"
-            })
+            }, headers=headers)
             proj_id = proj_res.json()["id"]
 
             # 内存设置为 50 (小于最小值 128)
@@ -143,7 +171,7 @@ class TestProjectConfig:
                 "sandbox_timeout_seconds": 30,
                 "max_memory_mb": 50,
                 "environment_variables": {}
-            })
+            }, headers=headers)
             assert config_res.status_code == 422
 
             # 内存设置为 10000 (大于最大值 2048)
@@ -151,7 +179,7 @@ class TestProjectConfig:
                 "sandbox_timeout_seconds": 30,
                 "max_memory_mb": 10000,
                 "environment_variables": {}
-            })
+            }, headers=headers)
             assert config_res.status_code == 422
 
     async def test_config_isolation(self):
@@ -163,6 +191,8 @@ class TestProjectConfig:
 
         from httpx import ASGITransport
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await self._get_api_key_header(client)
+
             # 创建 3 个项目，每个有不同的配置
             configs = [
                 {"timeout": 20, "memory": 256},
@@ -175,7 +205,7 @@ class TestProjectConfig:
                 proj_res = await client.post("/api/v1/projects", json={
                     "name": f"IsolationProj{i}",
                     "target_repo_path": f"./test{i}"
-                })
+                }, headers=headers)
                 proj_id = proj_res.json()["id"]
                 project_ids.append(proj_id)
 
@@ -183,7 +213,7 @@ class TestProjectConfig:
                     "sandbox_timeout_seconds": cfg["timeout"],
                     "max_memory_mb": cfg["memory"],
                     "environment_variables": {"PROJECT_ID": str(i)}
-                })
+                }, headers=headers)
                 assert config_res.status_code == 200
                 result = config_res.json()
                 assert result["sandbox_timeout_seconds"] == cfg["timeout"]

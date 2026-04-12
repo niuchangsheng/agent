@@ -55,3 +55,27 @@ class Adr(SQLModel, table=True):
     task_id: int = Field(foreign_key="task.id")
     brief_title: str
     generated_markdown_payload: str
+
+class APIKey(SQLModel, table=True):
+    """Sprint 8: API Key 模型"""
+    __tablename__ = "api_key"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    key_hash: str  # 哈希后的密钥
+    permissions: list = Field(default_factory=list, sa_type=sa.JSON)  # read, write, admin
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at: Optional[datetime] = None
+    is_active: bool = Field(default=True)
+
+class AuditLog(SQLModel, table=True):
+    """Sprint 8: 审计日志模型"""
+    __tablename__ = "audit_log"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: Optional[int] = Field(default=None)  # 用户/API Key ID
+    action: str  # CREATE, DELETE, UPDATE 等
+    resource: str  # 资源路径
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    ip_address: Optional[str] = None
+    details: Optional[Dict[str, str]] = Field(default_factory=dict, sa_type=sa.JSON)
