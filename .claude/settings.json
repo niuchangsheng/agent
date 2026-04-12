@@ -1,4 +1,13 @@
 {
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node .claude/hooks/check-sprint-status.js",
+        "async": true
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Bash(*)",
