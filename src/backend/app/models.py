@@ -27,11 +27,18 @@ class ProjectConfig(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class Task(SQLModel, table=True):
+    """Sprint 2 + Sprint 7: 任务模型（含队列支持）"""
     id: Optional[int] = Field(default=None, primary_key=True)
     project_id: int = Field(foreign_key="project.id")
     raw_objective: str
-    status: str = Field(default="PENDING")
-    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    status: str = Field(default="PENDING")  # PENDING, QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    # Sprint 7: 队列相关字段
+    queue_position: Optional[int] = None  # 队列位置
+    worker_id: Optional[str] = None  # 执行 Worker ID
+    progress_percent: int = Field(default=0, ge=0, le=100)  # 进度百分比
+    status_message: Optional[str] = None  # 进度状态消息
 
 class Trace(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

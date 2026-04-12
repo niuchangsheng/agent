@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 from app.database import engine, get_db_session
 from app.models import Project, Task, ProjectConfig
+from app.task_queue import global_queue
 from pydantic import BaseModel, Field
 from fastapi import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -27,6 +28,17 @@ class ProjectConfigCreate(BaseModel):
     sandbox_timeout_seconds: int = Field(ge=1, le=60, default=30)
     max_memory_mb: int = Field(ge=128, le=2048, default=512)
     environment_variables: Optional[Dict[str, str]] = Field(default_factory=dict)
+
+class TaskQueueCreate(BaseModel):
+    project_id: int
+    raw_objective: str
+
+class TaskProgressUpdate(BaseModel):
+    progress_percent: int = Field(ge=0, le=100)
+    status_message: str = ""
+
+class TaskComplete(BaseModel):
+    result: str
 
 class ProjectConfigUpdate(BaseModel):
     sandbox_timeout_seconds: Optional[int] = Field(None, ge=1, le=60)
@@ -216,6 +228,161 @@ async def update_project_config(
     await session.commit()
     await session.refresh(config)
     return config
+
+# ============== Sprint 7: Task Queue Endpoints ==============
+
+from app.task_queue import global_queue
+import uuid
+
+@app.post("/api/v1/tasks/queue")
+async def queue_task(
+    task_in: TaskQueueCreate,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """提交任务到队列"""
+    # 验证项目存在
+    project = await session.get(Project, task_in.project_id)
+    if not project:
+        raise HTTPException(status_code=400, detail="Project not found")
+
+    # 创建任务
+    db_task = Task(
+        project_id=task_in.project_id,
+        raw_objective=task_in.raw_objective,
+        status="QUEUED"
+    )
+    session.add(db_task)
+    await session.commit()
+    await session.refresh(db_task)
+
+    # 加入队列
+    position = await global_queue.enqueue(db_task.id, task_in.project_id, task_in.raw_objective)
+    db_task.queue_position = position
+    await session.commit()
+
+    return db_task
+
+@app.get("/api/v1/tasks/queue")
+async def get_queue_status():
+    """获取队列状态"""
+    return await global_queue.get_status()
+
+@app.delete("/api/v1/tasks/queue/{task_id}")
+async def cancel_queued_task(
+    task_id: int,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """取消队列中的任务"""
+    task = await session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    cancelled = await global_queue.cancel_task(task_id)
+    if cancelled:
+        task.status = "CANCELLED"
+        await session.commit()
+        return {"status": "CANCELLED", "task_id": task_id}
+    else:
+        raise HTTPException(status_code=400, detail="Task cannot be cancelled")
+
+@app.get("/api/v1/tasks/{task_id}/progress")
+async def get_task_progress(
+    task_id: int,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """获取任务进度"""
+    task = await session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    return {
+        "task_id": task_id,
+        "progress_percent": task.progress_percent,
+        "status_message": task.status_message,
+        "status": task.status
+    }
+
+@app.put("/api/v1/tasks/{task_id}/progress")
+async def update_task_progress(
+    task_id: int,
+    progress_in: TaskProgressUpdate,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """更新任务进度"""
+    task = await session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task.progress_percent = progress_in.progress_percent
+    task.status_message = progress_in.status_message
+    if progress_in.progress_percent == 100:
+        task.status = "COMPLETED"
+        task.completed_at = datetime.now(timezone.utc)
+
+    await session.commit()
+    await session.refresh(task)
+    return task
+
+@app.post("/api/v1/tasks/{task_id}/complete")
+async def complete_task(
+    task_id: int,
+    complete_in: TaskComplete,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """标记任务为完成"""
+    task = await session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task.status = "COMPLETED"
+    task.completed_at = datetime.now(timezone.utc)
+    task.progress_percent = 100
+    task.status_message = complete_in.result
+
+    await global_queue.complete_task(task_id)
+    await session.commit()
+
+    # 触发队列调度：尝试启动下一个任务
+    await process_queue(session)
+
+    return task
+
+@app.post("/api/v1/tasks/{task_id}/worker-crash")
+async def simulate_worker_crash(
+    task_id: int,
+    crash_in: dict,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """模拟 Worker 崩溃 - 任务重新入队"""
+    task = await session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # 重新入队
+    await global_queue.requeue_on_crash(task_id, task.project_id, task.raw_objective)
+    task.status = "QUEUED"
+    task.queue_position = len(global_queue.queued)
+
+    await session.commit()
+    return {"status": "REQUEUED", "task_id": task_id}
+
+async def process_queue(session: AsyncSession):
+    """处理队列：尝试启动等待的任务"""
+    while True:
+        queued_task = await global_queue.dequeue()
+        if not queued_task:
+            break
+        # 启动任务
+        worker_id = str(uuid.uuid4())[:8]
+        await global_queue.start_task(queued_task.task_id, worker_id)
+        # 更新数据库
+        task = await session.get(Task, queued_task.task_id)
+        if task:
+            task.status = "RUNNING"
+            task.worker_id = worker_id
+            task.started_at = datetime.now(timezone.utc)
+            task.queue_position = None
+            await session.commit()
 
 @app.exception_handler(404)
 async def custom_404_handler(request, exc):

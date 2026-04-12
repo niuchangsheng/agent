@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import Dashboard from './components/Dashboard';
 import PlaybackTree from './components/PlaybackTree';
 import ConfigPanel from './components/ConfigPanel';
+import TaskQueueDashboard from './components/TaskQueueDashboard';
 
 interface Task {
   id: number;
@@ -14,7 +15,7 @@ function App() {
   const [status, setStatus] = useState<string>('Detecting...');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'config'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'config' | 'queue'>('dashboard');
 
   useEffect(() => {
     fetch('/api/v1/health')
@@ -85,6 +86,16 @@ function App() {
           📊 Dashboard
         </button>
         <button
+          onClick={() => setActiveTab('queue')}
+          className={`px-4 py-2 rounded font-medium transition-colors ${
+            activeTab === 'queue'
+              ? 'bg-amber-600 text-white'
+              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+          }`}
+        >
+          📋 Task Queue
+        </button>
+        <button
           onClick={() => setActiveTab('config')}
           className={`px-4 py-2 rounded font-medium transition-colors ${
             activeTab === 'config'
@@ -103,6 +114,8 @@ function App() {
               <Dashboard taskId={selectedTaskId.toString()} />
               <PlaybackTree taskId={selectedTaskId.toString()} />
             </div>
+          ) : activeTab === 'queue' ? (
+            <TaskQueueDashboard />
           ) : (
             <ConfigPanel projectId={tasks.find(t => t.id === selectedTaskId)?.project_id || 0} />
           )}
