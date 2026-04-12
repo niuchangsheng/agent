@@ -1,19 +1,19 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import PlaybackTree, { transformTracesToMermaid } from '../src/components/PlaybackTree';
-import * as React from 'react';
+import type { TraceNode } from '../src/components/PlaybackTree';
 
 // Mock fetch
-global.fetch = vi.fn() as any;
+globalThis.fetch = vi.fn() as any;
 
 describe('PlaybackTree DAG Renderer', () => {
   it('函数 transformTracesToMermaid 应当能正确翻译树结构', () => {
-    const mockData = [
+    const mockData: TraceNode[] = [
       {
-        id: 1, is_success: true, agent_role: "Gen", 
+        id: 1, parent_trace_id: null, is_success: true, agent_role: "Gen", 
         children: [
-          { id: 2, is_success: false, agent_role: "Gen", children: [] },
-          { id: 3, is_success: true, agent_role: "Eval", children: [] }
+          { id: 2, parent_trace_id: 1, is_success: false, agent_role: "Gen", children: [] },
+          { id: 3, parent_trace_id: 1, is_success: true, agent_role: "Eval", children: [] }
         ]
       }
     ];
@@ -29,7 +29,7 @@ describe('PlaybackTree DAG Renderer', () => {
   });
 
   it('如果 API 还没有数据，渲染应当能够优雅降级', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
+    (globalThis.fetch as any).mockResolvedValueOnce({
       ok: true,
       json: async () => ([]),
     });

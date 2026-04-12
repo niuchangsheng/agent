@@ -1,7 +1,6 @@
-import { render, screen, waitFor, act } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, act } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Dashboard from '../src/components/Dashboard';
-import * as React from 'react';
 
 // Mock EventSource globally
 class MockEventSource {
@@ -17,10 +16,10 @@ class MockEventSource {
 
 describe('Introspection Dashboard', () => {
   beforeEach(() => {
-    (global as any).EventSource = MockEventSource;
+    (globalThis as any).EventSource = MockEventSource;
   });
   afterEach(() => {
-    delete (global as any).EventSource;
+    delete (globalThis as any).EventSource;
   });
 
   it('应当包含 Glassmorphism UI 标记类名', () => {
@@ -34,11 +33,11 @@ describe('Introspection Dashboard', () => {
     render(<Dashboard taskId="1" />);
     
     // Simulate finding the active connection
-    const eventSourceInstance = (global as any).EventSourceInstances?.[0];
+    (globalThis as any).EventSourceInstances?.[0];
     
     // We can simulate it by injecting an event
     act(() => {
-      const event = new MessageEvent('message', {
+      new MessageEvent('message', {
         data: JSON.stringify({ type: 'perception', content: '发现代码异味: unused variable' })
       });
       // Need a way to mock trigger message. Let's just mock the global fetch or find the instance.
