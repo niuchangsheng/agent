@@ -10,6 +10,25 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 cd "$PROJECT_ROOT"
 
+# 从 ~/.claude/settings.json 加载环境变量
+echo "🔐 加载环境变量..."
+if [ -f ~/.claude/settings.json ]; then
+    # 读取 ANTHROPIC_AUTH_TOKEN 或 ANTHROPIC_API_KEY
+    API_KEY=$(cat ~/.claude/settings.json | grep -o '"ANTHROPIC_AUTH_TOKEN"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+    BASE_URL=$(cat ~/.claude/settings.json | grep -o '"ANTHROPIC_BASE_URL"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+
+    if [ -n "$API_KEY" ]; then
+        export ANTHROPIC_API_KEY="$API_KEY"
+        echo "✅ 已加载 ANTHROPIC_API_KEY (****${API_KEY: -8})"
+    fi
+
+    if [ -n "$BASE_URL" ]; then
+        export ANTHROPIC_BASE_URL="$BASE_URL"
+        echo "✅ 已加载 ANTHROPIC_BASE_URL"
+    fi
+fi
+
+echo ""
 echo "========================================"
 echo "SECA /run 永动循环"
 echo "========================================"
@@ -17,18 +36,6 @@ echo ""
 echo "📋 工作流：每轮执行 1 个 Sprint → 自动新建 session → 继续下一轮"
 echo "🛑 中断：Ctrl+C 或所有 Sprint 完成后停止"
 echo ""
-
-# 检查登录状态（可选，不需要时注释掉）
-# echo "🔐 检查登录状态..."
-# if ! claude -p "echo test" 2>&1 | grep -q "test"; then
-#     echo "⚠️  未检测到有效登录，请先执行："
-#     echo ""
-#     echo "   claude -p '/login'"
-#     echo ""
-#     exit 1
-# fi
-# echo "✅ 登录状态正常"
-# echo ""
 echo "按 Enter 开始..."
 read
 
