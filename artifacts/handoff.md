@@ -2,33 +2,35 @@
 
 ## 最新进度与心跳留存
 - **最近更新时间**: 2026-04-12
-- **当前 Sprint**: Sprint 6 [ ] 待开始
+- **当前 Sprint**: Sprint 6 [x] 已完成
 - **更新方身份**: /run 自动调度器
 
 ## 当前游标与系统状态
-- **核心阶段落点**: **v1.1 规划完成，准备开始 Sprint 6 构建**
+- **核心阶段落点**: **Sprint 6 构建完成，准备 QA 评审**
 - **目标执行体进展**:
-  - `product_spec.md` 已更新，包含 v1.1 详细规划
-  - Feature 5-7 已完成需求细化
-  - Sprint 6-8 验收标准已明确
+  - 后端：ProjectConfig 模型、CRUD 端点全部实现
+  - 前端：ConfigPanel 组件、标签页切换完成
+  - 测试：后端 20/20 通过，前端 12/12 通过
 
-## 本次 /run 循环执行摘要
-- **规划阶段完成**:
-  - Sprint 6: 配置管理中心 — 多项目配置、环境变量隔离、沙箱配额限制
-  - Sprint 7: 异步任务队列 — 内存队列、Worker 池、进度轮询
-  - Sprint 8: 基础认证与权限 — API Key 中间件、审计日志
+## Sprint 6 交付摘要
+**交付功能**:
+- ✅ 后端：`ProjectConfig` 数据模型、`GET/PUT/POST /api/v1/projects/{id}/config` 端点
+- ✅ 前端：配置管理面板、环境变量编辑器、沙箱配额滑块
+- ✅ 测试：7 个后端测试 + 5 个前端测试全部通过
+
+**验收标准达成**:
+- ✅ 3 个并发任务各自遵循独立配额 (test_config_isolation)
+- ✅ 配置修改后新任务立即生效 (ConfigPanel 保存测试)
 
 ## 关键架构与约定回顾
-- **最近的关键决策落子**: 
-  - 配置修改仅对新任务生效，不中断运行中任务（降级方案）
-  - 内存队列 MVP 实现，后期迁移 Redis
-  - API Key 单层认证 MVP，暂不实现 RBAC
+- **数据模型**: 使用 SQLModel `sa_type=sa.JSON` 存储环境变量
+- **API 设计**: 按 `project_id` 字段查询而非主键 ID
+- **前端 UI**: 标签页切换 (Dashboard/Configuration)
 
 ## 待攻克的难题/未完成清单
-- Sprint 6: 配置热加载竞态条件防护
-- Sprint 7: Worker 崩溃恢复机制
-- Sprint 8: 密钥存储安全
+- Sprint 7: 异步任务队列 (待开始)
+- Sprint 8: 基础认证与权限 (待开始)
 
 ## 下游行动建议 (Action Requested)
-- **对于 AI**: 开始执行 Sprint 6，TDD 方式实现配置管理中心
-- **对于人类**: 审阅 product_spec.md 中的 v1.1 规划，确认方向正确
+- **对于 AI**: 执行 /qa 评审 Sprint 6
+- **对于人类**: 审阅配置管理中心功能，确认符合预期

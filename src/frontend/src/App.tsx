@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Dashboard from './components/Dashboard';
 import PlaybackTree from './components/PlaybackTree';
+import ConfigPanel from './components/ConfigPanel';
 
 interface Task {
   id: number;
@@ -13,6 +14,7 @@ function App() {
   const [status, setStatus] = useState<string>('Detecting...');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'config'>('dashboard');
 
   useEffect(() => {
     fetch('/api/v1/health')
@@ -70,10 +72,40 @@ function App() {
         </div>
       </div>
 
+      {/* 标签页切换 */}
+      <div className="w-full max-w-6xl mb-4 flex gap-2">
+        <button
+          onClick={() => setActiveTab('dashboard')}
+          className={`px-4 py-2 rounded font-medium transition-colors ${
+            activeTab === 'dashboard'
+              ? 'bg-cyan-600 text-white'
+              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+          }`}
+        >
+          📊 Dashboard
+        </button>
+        <button
+          onClick={() => setActiveTab('config')}
+          className={`px-4 py-2 rounded font-medium transition-colors ${
+            activeTab === 'config'
+              ? 'bg-purple-600 text-white'
+              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+          }`}
+        >
+          ⚙️ Configuration
+        </button>
+      </div>
+
       {selectedTaskId ? (
-        <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <Dashboard taskId={selectedTaskId.toString()} />
-          <PlaybackTree taskId={selectedTaskId.toString()} />
+        <div className="w-full max-w-6xl">
+          {activeTab === 'dashboard' ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <Dashboard taskId={selectedTaskId.toString()} />
+              <PlaybackTree taskId={selectedTaskId.toString()} />
+            </div>
+          ) : (
+            <ConfigPanel projectId={tasks.find(t => t.id === selectedTaskId)?.project_id || 0} />
+          )}
         </div>
       ) : (
         <div className="text-slate-500">No tasks available. Create a task to begin.</div>

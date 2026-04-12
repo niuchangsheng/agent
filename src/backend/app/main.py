@@ -3,12 +3,15 @@ from typing import AsyncGenerator
 from fastapi import FastAPI, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi import HTTPException
 from contextlib import asynccontextmanager
 from sqlmodel import SQLModel, select
+from typing import Optional, Dict
+from datetime import datetime, timezone
 
 from app.database import engine, get_db_session
-from app.models import Project, Task
-from pydantic import BaseModel
+from app.models import Project, Task, ProjectConfig
+from pydantic import BaseModel, Field
 from fastapi import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -19,6 +22,16 @@ class ProjectCreate(BaseModel):
 class TaskCreate(BaseModel):
     project_id: int
     raw_objective: str
+
+class ProjectConfigCreate(BaseModel):
+    sandbox_timeout_seconds: int = Field(ge=1, le=60, default=30)
+    max_memory_mb: int = Field(ge=128, le=2048, default=512)
+    environment_variables: Optional[Dict[str, str]] = Field(default_factory=dict)
+
+class ProjectConfigUpdate(BaseModel):
+    sandbox_timeout_seconds: Optional[int] = Field(None, ge=1, le=60)
+    max_memory_mb: Optional[int] = Field(None, ge=128, le=2048)
+    environment_variables: Optional[Dict[str, str]] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -135,6 +148,74 @@ Below are successful patches applied during dynamic sandbox tracing:
         f.write(markdown_content)
 
     return adr.model_dump()
+
+@app.post("/api/v1/projects/{project_id}/config")
+async def create_project_config(
+    project_id: int,
+    config_in: ProjectConfigCreate,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """创建项目配置"""
+    # 验证项目存在
+    project = await session.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=400, detail="Project not found")
+
+    # 检查配置是否已存在
+    result = await session.exec(select(ProjectConfig).where(ProjectConfig.project_id == project_id))
+    existing = result.one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail="Config already exists, use PUT to update")
+
+    db_config = ProjectConfig(
+        project_id=project_id,
+        sandbox_timeout_seconds=config_in.sandbox_timeout_seconds,
+        max_memory_mb=config_in.max_memory_mb,
+        environment_variables=config_in.environment_variables
+    )
+    session.add(db_config)
+    await session.commit()
+    await session.refresh(db_config)
+    return db_config
+
+@app.get("/api/v1/projects/{project_id}/config")
+async def get_project_config(
+    project_id: int,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """获取项目配置"""
+    result = await session.exec(select(ProjectConfig).where(ProjectConfig.project_id == project_id))
+    config = result.one_or_none()
+    if not config:
+        raise HTTPException(status_code=404, detail="Config not found")
+    return config
+
+@app.put("/api/v1/projects/{project_id}/config")
+async def update_project_config(
+    project_id: int,
+    config_in: ProjectConfigUpdate,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """更新项目配置"""
+    result = await session.exec(select(ProjectConfig).where(ProjectConfig.project_id == project_id))
+    config = result.one_or_none()
+    if not config:
+        raise HTTPException(status_code=404, detail="Config not found")
+
+    # 验证项目存在
+    project = await session.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=400, detail="Project not found")
+
+    update_data = config_in.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(config, key, value)
+
+    config.updated_at = datetime.now(timezone.utc)
+    session.add(config)
+    await session.commit()
+    await session.refresh(config)
+    return config
 
 @app.exception_handler(404)
 async def custom_404_handler(request, exc):
