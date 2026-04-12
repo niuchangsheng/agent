@@ -17,6 +17,18 @@ echo ""
 echo "📋 工作流：每轮执行 1 个 Sprint → 自动新建 session → 继续下一轮"
 echo "🛑 中断：Ctrl+C 或所有 Sprint 完成后停止"
 echo ""
+
+# 检查登录状态（可选，不需要时注释掉）
+# echo "🔐 检查登录状态..."
+# if ! claude -p "echo test" 2>&1 | grep -q "test"; then
+#     echo "⚠️  未检测到有效登录，请先执行："
+#     echo ""
+#     echo "   claude -p '/login'"
+#     echo ""
+#     exit 1
+# fi
+# echo "✅ 登录状态正常"
+# echo ""
 echo "按 Enter 开始..."
 read
 
