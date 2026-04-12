@@ -53,6 +53,11 @@ while true; do
     # 检查是否还有待执行的 Sprint
     if ! grep -q '\[ \]\|\[!\]' artifacts/product_spec.md 2>/dev/null; then
         echo "✅ 所有 Sprint 已完成！"
+        echo ""
+        echo "接下来请选择："
+        echo "  1. /release  - 结项交付"
+        echo "  2. /plan     - 规划新版本后继续"
+        echo ""
         break
     fi
 
