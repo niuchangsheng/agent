@@ -1,20 +1,16 @@
 #!/bin/bash
-# SECA 永动循环：Plan → (Build→QA)×N → Release → 无限迭代
+# SECA 永动循环：Plan → (Build→QA)×N → Release
 #
-# 用法：source ./scripts/auto-seca.sh
-#       然后执行：auto-seca
+# 用法：./scripts/auto-seca.sh
 #
-# 注意：必须用 source 执行，以确保环境变量正确继承
-#       不能用 ./auto-seca.sh，否则会启动子 shell 导致模型配置丢失
-#
-# 流程说明：
-#   1. /plan   - 规划新版本的功能和 Sprint
-#   2. 循环执行每个 Sprint:
-#      a. /build - TDD 开发单个 Sprint
-#      b. /qa    - 评审该 Sprint
-#      c. 更新 handoff.md 并提交
-#   3. /release - 所有 Sprint 完成后结项
-#   4. 回到步骤 1，规划下一版本
+# 原理：使用 claude -p 执行 slash 命令，每个命令启动独立 session
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+cd "$PROJECT_ROOT"
 
 # 从 ~/.claude/settings.json 加载环境变量
 load_env() {
@@ -23,6 +19,11 @@ load_env() {
         export ANTHROPIC_BASE_URL=$(cat ~/.claude/settings.json | grep -o '"ANTHROPIC_BASE_URL"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
         export ANTHROPIC_MODEL=$(cat ~/.claude/settings.json | grep -o '"ANTHROPIC_MODEL"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
     fi
+
+    echo "当前配置:"
+    echo "  ANTHROPIC_BASE_URL: $ANTHROPIC_BASE_URL"
+    echo "  ANTHROPIC_MODEL: $ANTHROPIC_MODEL"
+    echo ""
 }
 
 # 更新 handoff.md
@@ -42,26 +43,28 @@ has_pending_sprints() {
     grep -q '\[ \]\|\[!\]' artifacts/product_spec.md 2>/dev/null
 }
 
-# 主函数
-auto-seca() {
+# 执行 claude 命令
+run_claude() {
+    local prompt="$1"
+    echo "  → 执行：$prompt"
+    claude -p "$prompt"
+}
+
+# 主流程
+main() {
     load_env
 
     echo "========================================"
     echo "SECA 永动循环：Plan → (Build→QA)×N → Release"
     echo "========================================"
     echo ""
-    echo "当前配置:"
-    echo "  ANTHROPIC_BASE_URL: $ANTHROPIC_BASE_URL"
-    echo "  ANTHROPIC_MODEL: $ANTHROPIC_MODEL"
-    echo ""
     echo "📋 流程："
     echo "  1. /plan   - 规划新版本"
     echo "  2. /build  - 开发单个 Sprint"
     echo "  3. /qa     - 评审该 Sprint"
-    echo "  4. 更新 handoff 并提交"
-    echo "  5. 重复 2-4 直到所有 Sprint 完成"
-    echo "  6. /release - 结项交付"
-    echo "  7. 回到步骤 1"
+    echo "  4. 重复 2-3 直到所有 Sprint 完成"
+    echo "  5. /release - 结项交付"
+    echo "  6. 回到步骤 1"
     echo ""
     echo "🛑 中断：Ctrl+C"
     echo ""
@@ -83,7 +86,7 @@ auto-seca() {
         echo "📋 步骤 1/3: 规划新版本"
         echo "========================================"
 
-        /plan || { echo "❌ /plan 失败，退出"; exit 1; }
+        run_claude "/plan" || { echo "❌ /plan 失败，退出"; exit 1; }
 
         echo "✅ 规划完成"
 
@@ -116,7 +119,7 @@ auto-seca() {
             # Build
             echo ""
             echo "  → 执行 /build..."
-            /build || {
+            run_claude "/build" || {
                 echo "❌ /build 失败"
                 update_handoff "$SPRINT_COUNT" "构建失败"
                 exit 1
@@ -130,7 +133,7 @@ auto-seca() {
             # QA
             echo ""
             echo "  → 执行 /qa..."
-            /qa || {
+            run_claude "/qa" || {
                 echo "❌ /qa 失败"
                 update_handoff "$SPRINT_COUNT" "QA 失败 [!]"
                 exit 1
@@ -163,7 +166,7 @@ auto-seca() {
         echo "📋 步骤 3/3: 结项交付"
         echo "========================================"
 
-        /release || { echo "❌ /release 失败，退出"; exit 1; }
+        run_claude "/release" || { echo "❌ /release 失败，退出"; exit 1; }
 
         echo "✅ 第 $ROUND 轮结项完成"
 
@@ -183,7 +186,4 @@ auto-seca() {
     done
 }
 
-# 如果是直接执行（不是 source），则自动调用
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    auto-seca
-fi
+main
