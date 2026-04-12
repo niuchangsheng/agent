@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "Edit(*)",
+      "Write(*)",
+      "Read(*)",
+      "Agent(*)",
+      "TaskStop(*)",
+      "TaskOutput(*)"
+    ]
+  }
+}
