@@ -103,9 +103,9 @@
 - [x] Sprint 4: 实现 Feature 3 — 引入 Mermaid/D3 在前端承揽后台组合吐出的结构树 JSON 进行图谱渲染和差分面板点选功能。
 - [x] Sprint 5: 实现 Feature 4 — 结合全量回溯痕迹打造自动生成与挂载 ADR Markdown 文件的工作流节点。
 
-### v1.1 (规划中)
-- [ ] Sprint 6: 配置管理中心 — 实现 Feature 5
-  - 后端：`ProjectConfig` 模型、`GET/PUT /api/v1/projects/{id}/config` 端点、配置热加载中间件
+### v1.1 (进行中)
+- [x] Sprint 6: 配置管理中心 — 实现 Feature 5 ✅ QA 通过 (9.075/10)
+  - 后端：`ProjectConfig` 模型、`GET/PUT/POST /api/v1/projects/{id}/config` 端点
   - 前端：配置管理面板 UI、环境变量编辑器、沙箱配额滑块控件
   - 验收：3 个并发任务各自遵循独立配额、配置修改后新任务立即生效
 
