@@ -182,3 +182,8 @@ auto-seca() {
         sleep 10
     done
 }
+
+# 如果是直接执行（不是 source），则自动调用
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    auto-seca
+fi
