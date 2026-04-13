@@ -3,6 +3,140 @@ from httpx import AsyncClient
 from app.models import Project, Task
 from app.main import app
 import hashlib
+import bcrypt
+
+
+class TestBcryptHash:
+    """Sprint 10: bcrypt 哈希测试套件"""
+
+    def test_bcrypt_hash_produces_different_hashes_for_same_input(self):
+        """Red 路径：bcrypt 随机盐产生不同哈希"""
+        from app.auth import hash_api_key
+
+        # 同一输入应产生不同哈希（因为随机盐）
+        hash1 = hash_api_key("test-key-123")
+        hash2 = hash_api_key("test-key-123")
+
+        # bcrypt 使用随机盐，所以哈希应该不同
+        assert hash1 != hash2, "bcrypt 应为相同输入产生不同哈希（随机盐）"
+        assert len(hash1) == 60, "bcrypt 哈希长度应为 60 字符"
+        assert len(hash2) == 60, "bcrypt 哈希长度应为 60 字符"
+
+    def test_bcrypt_verify_valid_key(self):
+        """Green 路径：bcrypt 验证有效 Key"""
+        from app.auth import hash_api_key, verify_api_key
+
+        # 生成哈希
+        key = "test-valid-key"
+        key_hash = hash_api_key(key)
+
+        # 验证应成功
+        assert verify_api_key(key, key_hash) is True, "有效 Key 应验证成功"
+
+    def test_bcrypt_verify_invalid_key(self):
+        """Red 路径：bcrypt 拒绝无效 Key"""
+        from app.auth import hash_api_key, verify_api_key
+
+        # 生成哈希
+        key = "test-valid-key"
+        key_hash = hash_api_key(key)
+
+        # 使用错误 Key 验证应失败
+        assert verify_api_key("wrong-key", key_hash) is False, "无效 Key 应验证失败"
+
+    def test_bcrypt_hash_length(self):
+        """Green 路径：bcrypt 哈希长度正确"""
+        from app.auth import hash_api_key
+
+        key_hash = hash_api_key("test-key")
+        assert len(key_hash) == 60, "bcrypt 哈希长度应为 60 字符"
+        assert key_hash.startswith("$2"), "bcrypt 哈希应以$2 开头"
+
+
+@pytest.mark.asyncio
+class TestAPIKeyExpiry:
+    """Sprint 10: API Key 过期测试套件"""
+
+    async def test_expired_api_key_rejected(self):
+        """Red 路径：过期 Key 被拒绝"""
+        from app.database import engine
+        from datetime import datetime, timezone, timedelta
+        from sqlmodel import SQLModel
+
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+
+        from httpx import ASGITransport
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            # 创建已过期的 API Key（使用 aware datetime）
+            expired_time = datetime.now(timezone.utc) - timedelta(hours=1)
+            create_res = await client.post("/api/v1/auth/api-keys", json={
+                "name": "ExpiredKey",
+                "permissions": ["read", "write"],
+                "expires_at": expired_time.isoformat().replace("+00:00", "Z")
+            })
+            api_key = create_res.json()["key"]
+
+            # 尝试使用过期 Key
+            res = await client.post("/api/v1/projects", json={
+                "name": "ExpiredKeyTest",
+                "target_repo_path": "./expired"
+            }, headers={"X-API-Key": api_key})
+
+            assert res.status_code == 401, "过期 Key 应被拒绝"
+
+    async def test_api_key_with_future_expiry_accepted(self):
+        """Green 路径：未过期 Key 被接受"""
+        from app.database import engine
+        from datetime import datetime, timezone, timedelta
+        from sqlmodel import SQLModel
+
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+
+        from httpx import ASGITransport
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            # 创建未来过期的 API Key（使用 aware datetime）
+            future_time = datetime.now(timezone.utc) + timedelta(hours=1)
+            create_res = await client.post("/api/v1/auth/api-keys", json={
+                "name": "FutureExpiryKey",
+                "permissions": ["read", "write"],
+                "expires_at": future_time.isoformat().replace("+00:00", "Z")
+            })
+            api_key = create_res.json()["key"]
+
+            # 使用未过期 Key 执行写操作
+            res = await client.post("/api/v1/projects", json={
+                "name": "FutureExpiryTest",
+                "target_repo_path": "./future"
+            }, headers={"X-API-Key": api_key})
+
+            assert res.status_code == 200, "未过期 Key 应被接受"
+
+    async def test_api_key_without_expiry_accepted(self):
+        """Green 路径：无过期时间 Key 被接受"""
+        from app.database import engine
+        from sqlmodel import SQLModel
+
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+
+        from httpx import ASGITransport
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            # 创建无过期时间的 API Key
+            create_res = await client.post("/api/v1/auth/api-keys", json={
+                "name": "NoExpiryKey",
+                "permissions": ["read", "write"]
+            })
+            api_key = create_res.json()["key"]
+
+            # 使用无过期时间 Key 执行写操作
+            res = await client.post("/api/v1/projects", json={
+                "name": "NoExpiryTest",
+                "target_repo_path": "./noexpiry"
+            }, headers={"X-API-Key": api_key})
+
+            assert res.status_code == 200, "无过期时间 Key 应被接受"
 
 
 @pytest.mark.asyncio

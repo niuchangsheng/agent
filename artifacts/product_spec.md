@@ -117,8 +117,8 @@
   - 后端：Redis 连接池、任务状态持久化、崩溃恢复逻辑
   - 验收：服务重启后未完成任务自动恢复、Redis 不可用时降级内存队列
   
-- [ ] Sprint 10: API Key 加密存储 — 实现 Feature 9
-  - 后端：cryptography 库集成、密钥哈希比对、过期时间验证
+- [x] Sprint 10: API Key 加密存储 — 实现 Feature 9 ✅ 构建完成，等待 QA
+  - 后端：bcrypt 库集成、密钥哈希比对、过期时间验证
   - 验收：数据库中存储加密哈希、明文仅展示一次、过期 Key 自动失效
   
 - [ ] Sprint 11: 审计日志增强 — 实现 Feature 10
