@@ -79,6 +79,9 @@ def require_api_key(permission: str = "write"):
         if permission not in db_key.permissions and "admin" not in db_key.permissions:
             raise HTTPException(status_code=403, detail="Insufficient permissions")
 
+        # 存储 API Key ID 到 request state，供审计中间件使用
+        request.state.api_key_id = db_key.id
+
         return db_key
 
     return api_key_dependency

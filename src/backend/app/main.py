@@ -1,8 +1,9 @@
 import asyncio
 import os
 import logging
+import time
 from typing import AsyncGenerator, List
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request, Header
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi import HTTPException
@@ -25,6 +26,40 @@ logger = logging.getLogger(__name__)
 
 # 全局队列实例（Sprint 9）
 global_queue: BaseQueue = None
+
+def get_ip_address(request: Request) -> str:
+    """获取请求 IP 地址（支持 X-Forwarded-For）"""
+    x_forwarded_for = request.headers.get("X-Forwarded-For")
+    if x_forwarded_for:
+        # X-Forwarded-For 可能包含多个 IP，取第一个
+        return x_forwarded_for.split(",")[0].strip()
+    # 降级使用 client.host
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+async def create_audit_log(
+    session: AsyncSession,
+    action: str,
+    resource: str,
+    api_key_id: Optional[int],
+    ip_address: str,
+    user_agent: str,
+    duration_ms: int,
+    details: Optional[Dict] = None
+):
+    """异步创建审计日志"""
+    audit_log = AuditLog(
+        api_key_id=api_key_id,
+        action=action,
+        resource=resource,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        duration_ms=duration_ms,
+        details=details or {}
+    )
+    session.add(audit_log)
+    await session.commit()
 
 class ProjectCreate(BaseModel):
     name: str
@@ -107,6 +142,66 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(title="SECA API", lifespan=lifespan)
 
+# Audit Log Middleware - captures IP, User-Agent, duration for write operations
+@app.middleware("http")
+async def audit_log_middleware(request: Request, call_next):
+    start_time = time.time()
+
+    # 捕获请求信息
+    ip_address = get_ip_address(request)
+    user_agent = request.headers.get("User-Agent", "")
+
+    # 执行请求
+    response = await call_next(request)
+
+    # 计算耗时
+    duration_ms = int((time.time() - start_time) * 1000)
+
+    # 只对写操作记录审计日志
+    write_methods = {"POST", "PUT", "DELETE", "PATCH"}
+    if request.method in write_methods:
+        # 从请求状态中获取 API Key ID（如果有）
+        api_key_id = getattr(request.state, "api_key_id", None)
+
+        # 创建审计日志（使用后台任务）
+        asyncio.create_task(
+            _save_audit_log(
+                api_key_id=api_key_id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                duration_ms=duration_ms,
+                method=request.method,
+                path=str(request.url.path)
+            )
+        )
+
+    return response
+
+
+async def _save_audit_log(
+    api_key_id: Optional[int],
+    ip_address: str,
+    user_agent: str,
+    duration_ms: int,
+    method: str,
+    path: str
+):
+    """后台任务：保存审计日志"""
+    async with engine.begin() as conn:
+        audit_log = AuditLog(
+            api_key_id=api_key_id,
+            action=method,
+            resource=path,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            duration_ms=duration_ms,
+            details={"method": method, "path": path}
+        )
+        session = AsyncSession(bind=engine, expire_on_commit=False)
+        async with session:
+            session.add(audit_log)
+            await session.commit()
+
 @app.get("/api/v1/health")
 async def health_check():
     return {"status": "active"}
@@ -122,16 +217,6 @@ async def create_project(
     session.add(db_proj)
     await session.commit()
     await session.refresh(db_proj)
-
-    # 记录审计日志
-    audit_log = AuditLog(
-        user_id=api_key.id,
-        action="CREATE",
-        resource="/api/v1/projects",
-        details={"name": proj.name}
-    )
-    session.add(audit_log)
-    await session.commit()
 
     return db_proj
 
@@ -538,18 +623,65 @@ async def delete_api_key(
     return {"status": "deleted", "id": key_id}
 
 @app.get("/api/v1/audit-logs")
-async def list_audit_logs(session: AsyncSession = Depends(get_db_session)):
-    """列出审计日志"""
-    result = await session.exec(select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(100))
+async def list_audit_logs(
+    session: AsyncSession = Depends(get_db_session),
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    action: Optional[str] = None,
+    user_id: Optional[int] = None,
+    page: int = 1,
+    page_size: int = 20
+):
+    """列出审计日志（支持筛选和分页）"""
+    from datetime import datetime
+
+    # 构建查询条件
+    query = select(AuditLog)
+
+    # 时间范围筛选
+    if start_time:
+        try:
+            start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+            query = query.where(AuditLog.timestamp >= start_dt)
+        except ValueError:
+            pass
+
+    if end_time:
+        try:
+            end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+            query = query.where(AuditLog.timestamp <= end_dt)
+        except ValueError:
+            pass
+
+    # 操作类型筛选
+    if action:
+        query = query.where(AuditLog.action == action.upper())
+
+    # 用户 ID 筛选
+    if user_id:
+        query = query.where(AuditLog.api_key_id == user_id)
+
+    # 按时间倒序
+    query = query.order_by(AuditLog.timestamp.desc())
+
+    # 分页
+    offset = (page - 1) * page_size
+    query = query.offset(offset).limit(page_size)
+
+    result = await session.exec(query)
     logs = result.all()
+
     return [
         {
             "id": l.id,
-            "user_id": l.user_id,
+            "api_key_id": l.api_key_id,
             "action": l.action,
             "resource": l.resource,
-            "timestamp": l.timestamp,
-            "ip_address": l.ip_address
+            "timestamp": l.timestamp.isoformat(),
+            "ip_address": l.ip_address,
+            "user_agent": l.user_agent,
+            "duration_ms": l.duration_ms,
+            "details": l.details
         }
         for l in logs
     ]

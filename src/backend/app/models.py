@@ -73,13 +73,16 @@ class APIKey(SQLModel, table=True):
     is_active: bool = Field(default=True)
 
 class AuditLog(SQLModel, table=True):
-    """Sprint 8: 审计日志模型"""
+    """Sprint 8 + Sprint 11: 审计日志模型"""
     __tablename__ = "audit_log"
 
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: Optional[int] = Field(default=None)  # 用户/API Key ID
+    api_key_id: Optional[int] = Field(default=None)  # API Key ID (Sprint 11)
     action: str  # CREATE, DELETE, UPDATE 等
     resource: str  # 资源路径
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     ip_address: Optional[str] = None
+    user_agent: Optional[str] = None  # Sprint 11: User-Agent
+    duration_ms: Optional[int] = None  # Sprint 11: 操作耗时（毫秒）
     details: Optional[Dict[str, str]] = Field(default_factory=dict, sa_type=sa.JSON)
