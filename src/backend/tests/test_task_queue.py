@@ -1,18 +1,23 @@
 import pytest
 from httpx import AsyncClient
 from app.models import Project, Task
-from app.main import app
-from app.task_queue import global_queue
+from app.main import app, global_queue
+from app.queue import InMemoryQueue
 import asyncio
 
 
 @pytest.fixture(autouse=True)
 async def reset_queue():
     """每个测试前重置队列状态"""
-    global_queue.queued = []
-    global_queue.running = {}
-    global_queue.completed = []
-    global_queue.cancelled = []
+    # 确保队列已初始化
+    if global_queue is None:
+        from app.main import global_queue as gq
+        # 在测试中直接创建内存队列
+        import app.main
+        app.main.global_queue = InMemoryQueue(max_concurrent=2)
+    elif hasattr(global_queue, 'queued'):
+        global_queue.queued = []
+        global_queue.running = {}
     yield
 
 

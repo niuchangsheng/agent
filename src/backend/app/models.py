@@ -27,7 +27,7 @@ class ProjectConfig(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class Task(SQLModel, table=True):
-    """Sprint 2 + Sprint 7: 任务模型（含队列支持）"""
+    """Sprint 2 + Sprint 7 + Sprint 9: 任务模型（含队列支持和优先级）"""
     id: Optional[int] = Field(default=None, primary_key=True)
     project_id: int = Field(foreign_key="project.id")
     raw_objective: str
@@ -39,6 +39,10 @@ class Task(SQLModel, table=True):
     worker_id: Optional[str] = None  # 执行 Worker ID
     progress_percent: int = Field(default=0, ge=0, le=100)  # 进度百分比
     status_message: Optional[str] = None  # 进度状态消息
+    # Sprint 9: 优先级字段
+    priority: int = Field(default=0, ge=0, le=10)  # 优先级 0-10
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class Trace(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

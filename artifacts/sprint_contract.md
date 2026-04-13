@@ -1,74 +1,92 @@
-# Sprint 8 验收合同：基础认证与权限
+# Sprint 9 验收合同：Redis 队列持久化
 
 ## 合同签署方
-- **需求方**: product_spec.md Feature 7
+- **需求方**: product_spec.md Feature 8 (Sprint 9)
 - **执行方**: Generator (TDD 工程师)
 - **验收方**: Evaluator (QA 评审官)
 
 ## 功能范围
 
 ### 后端交付物
-1. **数据模型**:
-   - `APIKey` 表：存储 API 密钥及其权限
-     - `key_hash` - 哈希后的密钥
-     - `permissions` - 权限列表 (read, write, admin)
-     - `created_at` / `expires_at` - 时间戳
-   - `AuditLog` 表：审计日志
-     - `user_id` - 用户/API Key ID
-     - `action` - 操作类型
-     - `resource` - 资源路径
-     - `timestamp` - 操作时间
-     - `ip_address` - IP 地址
 
-2. **中间件与装饰器**:
-   - `APIKeyMiddleware` - 验证 API Key
-   - `require_permission` - 权限装饰器
+1. **数据模型扩展**:
+   - `Task` 模型新增字段:
+     - `priority` - 优先级 (0-10, 默认 0)
+     - `created_at` - 创建时间
+     - `updated_at` - 更新时间
 
-3. **API 端点**:
-   - `POST /api/v1/auth/api-keys` - 创建 API Key
-   - `GET /api/v1/auth/api-keys` - 列出 API Keys
-   - `DELETE /api/v1/auth/api-keys/{id}` - 删除 API Key
-   - 所有现有写操作端点添加认证保护
+2. **队列实现**:
+   - `BaseQueue` - 队列抽象基类
+   - `RedisQueue` - Redis 持久化队列实现
+   - `InMemoryQueue` - 内存队列（降级模式）
 
-### 前端交付物
-1. **API Key 管理面板**:
-   - 创建/删除 API Key
-   - 权限选择 (Read/Write/Admin)
-   - Key 显示 (仅创建时显示一次)
+3. **Redis Key 设计**:
+   - `seca:queue:pending` - Sorted Set (优先级 + 时间排序)
+   - `seca:queue:running` - Hash (运行中任务)
+   - `seca:queue:task:{id}` - Hash (任务详情)
 
-2. **认证集成**:
-   - 登录态持久化 (localStorage)
-   - 401/403 错误处理
-   - 请求自动携带 API Key
+4. **配置**:
+   - `REDIS_URL` 环境变量支持
+   - Redis 连接超时配置
+
+### API 端点 (保持不变)
+- 现有队列 API 端点兼容，无需修改接口
 
 ## 验收测试清单
 
 ### TDD 测试用例 (必须全部通过)
 
-#### Red 路径测试 (边界/异常)
-- [ ] `test_no_api_key_returns_401` - 无 Key 请求返回 401
-- [ ] `test_invalid_api_key_returns_401` - 无效 Key 返回 401
-- [ ] `test_readonly_key_cannot_write` - 只读 Key 不能写操作
-- [ ] `test_expired_api_key_rejected` - 过期 Key 被拒绝
+#### Redis 队列核心测试
+- [ ] `test_redis_enqueue_adds_to_sorted_set` - 入队添加到 Sorted Set
+- [ ] `test_redis_dequeue_removes_highest_priority` - 出队取出最高优先级
+- [ ] `test_redis_task_persistence` - 任务持久化到 Redis Hash
+- [ ] `test_redis_progress_update_persists` - 进度更新持久化
+- [ ] `test_redis_queue_status` - 队列状态查询
 
-#### Green 路径测试 (Happy Path)
-- [ ] `test_api_key_creation` - 创建 API Key
-- [ ] `test_api_key_list` - 列出 API Keys
-- [ ] `test_api_key_delete` - 删除 API Key
-- [ ] `test_write_operation_with_valid_key` - 有效 Key 可执行写操作
-- [ ] `test_audit_log_created_on_write` - 写操作创建审计日志
+#### 崩溃恢复测试
+- [ ] `test_recovery_restores_pending_tasks` - 恢复待执行任务
+- [ ] `test_recovery_requeues_running_tasks` - 运行中任务重新入队
+- [ ] `test_recovery_ignores_completed_tasks` - 已完成任务不恢复
 
-#### 集成测试
-- [ ] `test_middleware_protects_all_write_routes` - 中间件保护所有写路由
+#### 降级模式测试
+- [ ] `test_fallback_to_memory_on_redis_unavailable` - Redis 不可用时降级内存队列
+- [ ] `test_warning_logged_on_fallback` - 降级时记录警告日志
+- [ ] `test_memory_queue_functions_without_redis` - 内存队列功能正常
+
+#### 边界测试
+- [ ] `test_empty_queue_dequeue_returns_none` - 空队列出队返回 None
+- [ ] `test_same_priority_fifo_order` - 相同优先级遵循 FIFO
+- [ ] `test_invalid_priority_rejected` - 无效优先级被拒绝
 
 ## 技术约束
-- MVP 仅支持单层级 API Key 认证
-- 密钥必须哈希存储 (bcrypt/sha256)
-- 审计日志记录所有写操作
+
+1. **Redis 依赖**:
+   - 使用 `redis-py` 异步客户端 `aredis` 或 `redis.asyncio`
+   - 不阻塞服务启动（连接失败时降级）
+
+2. **YAGNI 原则**:
+   - MVP 仅支持单机 Redis
+   - 不支持 Redis Cluster
+   - 不实现 Redis Sentinel 高可用
+
+3. **兼容性**:
+   - 保持现有 API 端点不变
+   - 队列接口抽象化，支持多实现
 
 ## 完成定义
+
 - [ ] 所有测试用例编写完成 (Red)
 - [ ] 所有测试用例通过 (Green)
 - [ ] Lint 检查无警告
-- [ ] 不破坏现有 Sprint 1-7 的测试
+- [ ] 不破坏现有 Sprint 1-8 的测试
 - [ ] handoff.md 更新完成
+- [ ] ADR-009 决策记录创建
+
+## 交付文件清单
+
+- [ ] `src/backend/app/queue/__init__.py`
+- [ ] `src/backend/app/queue/base.py`
+- [ ] `src/backend/app/queue/redis_queue.py`
+- [ ] `src/backend/app/queue/in_memory_queue.py`
+- [ ] `src/backend/tests/test_redis_queue.py`
+- [ ] `artifacts/decisions/ADR-009.md`

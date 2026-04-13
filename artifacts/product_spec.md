@@ -112,8 +112,8 @@
 - [x] Sprint 7: 异步任务队列 — 实现 Feature 6 ✅ QA 通过 (9.075/10)
 - [x] Sprint 8: 基础认证与权限 — 实现 Feature 7 ✅ QA 通过 (9.175/10)
 
-### v1.2 (规划中)
-- [ ] Sprint 9: Redis 队列持久化 — 实现 Feature 8
+### v1.2 (进行中)
+- [x] Sprint 9: Redis 队列持久化 — 实现 Feature 8 ✅ 构建完成，等待 QA
   - 后端：Redis 连接池、任务状态持久化、崩溃恢复逻辑
   - 验收：服务重启后未完成任务自动恢复、Redis 不可用时降级内存队列
   

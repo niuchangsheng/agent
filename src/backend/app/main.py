@@ -1,4 +1,6 @@
 import asyncio
+import os
+import logging
 from typing import AsyncGenerator, List
 from fastapi import FastAPI, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -11,11 +13,18 @@ from datetime import datetime, timezone
 
 from app.database import engine, get_db_session
 from app.models import Project, Task, ProjectConfig, APIKey, AuditLog
-from app.task_queue import global_queue
 from app.auth import require_write_key, generate_api_key, hash_api_key
 from pydantic import BaseModel, Field
 from fastapi import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
+
+# Sprint 9: 导入新队列模块
+from app.queue import create_queue, BaseQueue
+
+logger = logging.getLogger(__name__)
+
+# 全局队列实例（Sprint 9）
+global_queue: BaseQueue = None
 
 class ProjectCreate(BaseModel):
     name: str
@@ -33,6 +42,7 @@ class ProjectConfigCreate(BaseModel):
 class TaskQueueCreate(BaseModel):
     project_id: int
     raw_objective: str
+    priority: int = Field(default=0, ge=0, le=10)  # Sprint 9: 优先级
 
 class TaskProgressUpdate(BaseModel):
     progress_percent: int = Field(ge=0, le=100)
@@ -61,9 +71,38 @@ class APIKeyResponse(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    global global_queue
+
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
+
+    # Sprint 9: 初始化队列（支持 Redis 降级）
+    redis_url = os.getenv("REDIS_URL")
+    if redis_url:
+        from app.queue import RedisQueue
+        global_queue = RedisQueue(redis_url=redis_url, max_concurrent=2)
+        connected = await global_queue.connect()
+        if connected:
+            # 从持久化恢复未完成任务
+            await global_queue.recover_from_persistence()
+            logger.info("Redis queue initialized with recovery")
+        else:
+            # 降级到内存队列
+            from app.queue import InMemoryQueue
+            global_queue = InMemoryQueue(max_concurrent=2)
+            logger.warning("Falling back to in-memory queue")
+    else:
+        # 无 Redis 配置，使用内存队列
+        from app.queue import InMemoryQueue
+        global_queue = InMemoryQueue(max_concurrent=2)
+        logger.info("In-memory queue initialized")
+
     yield
+
+    # 清理
+    if global_queue and hasattr(global_queue, 'close'):
+        await global_queue.close()
+
     await engine.dispose()
 
 app = FastAPI(title="SECA API", lifespan=lifespan)
@@ -271,9 +310,8 @@ async def update_project_config(
     await session.refresh(config)
     return config
 
-# ============== Sprint 7: Task Queue Endpoints ==============
+# ============== Sprint 7/9: Task Queue Endpoints ==============
 
-from app.task_queue import global_queue
 import uuid
 
 @app.post("/api/v1/tasks/queue")
@@ -292,14 +330,15 @@ async def queue_task(
     db_task = Task(
         project_id=task_in.project_id,
         raw_objective=task_in.raw_objective,
-        status="QUEUED"
+        status="QUEUED",
+        priority=task_in.priority
     )
     session.add(db_task)
     await session.commit()
     await session.refresh(db_task)
 
-    # 加入队列
-    position = await global_queue.enqueue(db_task.id, task_in.project_id, task_in.raw_objective)
+    # 加入队列（支持优先级）
+    position = await global_queue.enqueue(db_task.id, task_in.project_id, task_in.raw_objective, task_in.priority)
     db_task.queue_position = position
     await session.commit()
 
