@@ -27,7 +27,7 @@ class ProjectConfig(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class Task(SQLModel, table=True):
-    """Sprint 2 + Sprint 7 + Sprint 9: 任务模型（含队列支持和优先级）"""
+    """Sprint 2 + Sprint 7 + Sprint 9 + Sprint 12: 任务模型（含队列支持、优先级和 ETA）"""
     id: Optional[int] = Field(default=None, primary_key=True)
     project_id: int = Field(foreign_key="project.id")
     raw_objective: str
@@ -41,6 +41,9 @@ class Task(SQLModel, table=True):
     status_message: Optional[str] = None  # 进度状态消息
     # Sprint 9: 优先级字段
     priority: int = Field(default=0, ge=0, le=10)  # 优先级 0-10
+    # Sprint 12: ETA 字段
+    estimated_remaining_seconds: Optional[int] = None  # 预计剩余时间（秒）
+    estimated_completion_at: Optional[datetime] = None  # 预计完成时间
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

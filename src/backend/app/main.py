@@ -3,18 +3,19 @@ import os
 import logging
 import time
 from typing import AsyncGenerator, List
-from fastapi import FastAPI, Depends, Request, Header
+from fastapi import FastAPI, Depends, Request, Header, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi import HTTPException
 from contextlib import asynccontextmanager
 from sqlmodel import SQLModel, select
 from typing import Optional, Dict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from app.database import engine, get_db_session
 from app.models import Project, Task, ProjectConfig, APIKey, AuditLog
 from app.auth import require_write_key, generate_api_key, hash_api_key
+from app.eta import update_task_eta, get_eta_calculator
 from pydantic import BaseModel, Field
 from fastapi import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -470,6 +471,66 @@ async def get_task_progress(
         "status": task.status
     }
 
+@app.get("/api/v1/tasks/{task_id}")
+async def get_task_detail(
+    task_id: int,
+    session: AsyncSession = Depends(get_db_session)
+):
+    """获取任务详情（包含 ETA）"""
+    task = await session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # 计算 ETA（如果数据库中没有或需要更新）
+    calculator = get_eta_calculator(task_id)
+    calculator.add_progress_sample(task.progress_percent, task.updated_at or task.created_at)
+    remaining_seconds = calculator.get_remaining_seconds()
+    eta_string = calculator.get_eta()
+
+    return {
+        "id": task.id,
+        "project_id": task.project_id,
+        "raw_objective": task.raw_objective,
+        "status": task.status,
+        "progress_percent": task.progress_percent,
+        "status_message": task.status_message,
+        "priority": task.priority,
+        "queue_position": task.queue_position,
+        "worker_id": task.worker_id,
+        "started_at": task.started_at.isoformat() if task.started_at else None,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+        "created_at": task.created_at.isoformat(),
+        "updated_at": task.updated_at.isoformat(),
+        "estimated_remaining_seconds": task.estimated_remaining_seconds or remaining_seconds,
+        "estimated_completion_at": task.estimated_completion_at.isoformat() if task.estimated_completion_at else None,
+        "eta": eta_string or (task.estimated_remaining_seconds and f"剩余约 {task.estimated_remaining_seconds} 秒")
+    }
+
+@app.put("/api/v1/tasks/{task_id}/priority")
+async def update_task_priority(
+    task_id: int,
+    priority: int = Query(ge=0, le=10),
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """更新任务优先级 - 需要写权限"""
+    task = await session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # 更新数据库中的优先级
+    task.priority = priority
+    await session.commit()
+
+    # 更新队列中的优先级
+    try:
+        await global_queue.update_priority(task_id, priority)
+    except Exception as e:
+        logger.warning(f"Failed to update priority in queue: {e}")
+
+    await session.refresh(task)
+    return task
+
 @app.put("/api/v1/tasks/{task_id}/progress")
 async def update_task_progress(
     task_id: int,
@@ -487,6 +548,12 @@ async def update_task_progress(
     if progress_in.progress_percent == 100:
         task.status = "COMPLETED"
         task.completed_at = datetime.now(timezone.utc)
+
+    # 更新 ETA
+    remaining_seconds, eta_string = update_task_eta(task_id, progress_in.progress_percent)
+    task.estimated_remaining_seconds = remaining_seconds
+    if remaining_seconds is not None:
+        task.estimated_completion_at = datetime.now(timezone.utc) + timedelta(seconds=remaining_seconds)
 
     await session.commit()
     await session.refresh(task)

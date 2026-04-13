@@ -73,6 +73,11 @@ class BaseQueue(ABC):
         pass
 
     @abstractmethod
+    async def update_priority(self, task_id: int, new_priority: int) -> bool:
+        """更新任务优先级"""
+        pass
+
+    @abstractmethod
     async def recover_from_persistence(self) -> None:
         """从持久化存储恢复未完成任务"""
         pass

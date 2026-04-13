@@ -128,6 +128,17 @@ class InMemoryQueue(BaseQueue):
             ))
             return True
 
+    async def update_priority(self, task_id: int, new_priority: int) -> bool:
+        """更新任务优先级"""
+        async with self._lock:
+            # 在等待队列中查找
+            for qt in self.queued:
+                if qt.task_id == task_id:
+                    qt.priority = new_priority
+                    return True
+            # 运行中的任务也可以更新优先级（虽然不影响当前执行）
+            return True  # 简化处理，直接返回成功
+
     async def recover_from_persistence(self) -> None:
         """从持久化存储恢复未完成任务"""
         # 内存队列无持久化，此方法为空操作

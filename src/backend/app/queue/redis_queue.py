@@ -283,6 +283,39 @@ class RedisQueue(BaseQueue):
             )
             return True
 
+    async def update_priority(self, task_id: int, new_priority: int) -> bool:
+        """更新任务优先级"""
+        async with self._lock:
+            if not self._connected:
+                return False
+
+            # 检查是否在待处理队列中
+            score = await self._redis.zscore(self.PENDING_KEY, str(task_id))
+            if score is not None:
+                # 在待处理队列中，更新分数
+                # 获取原有 queued_at
+                task_data = await self._redis.hgetall(f"{self.TASK_PREFIX}:{task_id}")
+                if task_data:
+                    queued_at = datetime.fromisoformat(task_data["queued_at"])
+                    new_score = self._task_score(new_priority, queued_at)
+                    await self._redis.zadd(self.PENDING_KEY, {str(task_id): new_score})
+                    await self._redis.hset(f"{self.TASK_PREFIX}:{task_id}", "priority", str(new_priority))
+                    return True
+                return False
+
+            # 检查是否在运行中（运行中任务也可以更新优先级记录）
+            running = await self._redis.hexists(self.RUNNING_KEY, str(task_id))
+            if running:
+                running_data_str = await self._redis.hget(self.RUNNING_KEY, str(task_id))
+                if running_data_str:
+                    running_data = json.loads(running_data_str)
+                    running_data["priority"] = str(new_priority)
+                    await self._redis.hset(self.RUNNING_KEY, str(task_id), json.dumps(running_data))
+                    await self._redis.hset(f"{self.TASK_PREFIX}:{task_id}", "priority", str(new_priority))
+                    return True
+
+            return False
+
     async def recover_from_persistence(self) -> None:
         """从持久化存储恢复未完成任务"""
         async with self._lock:
