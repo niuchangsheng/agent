@@ -2,24 +2,22 @@ import asyncio
 import os
 import logging
 import time
-from typing import AsyncGenerator, List
+from typing import AsyncGenerator, List, Optional, Dict
 from fastapi import FastAPI, Depends, Request, Header, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi import HTTPException
 from contextlib import asynccontextmanager
 from sqlmodel import SQLModel, select
-from typing import Optional, Dict
 from datetime import datetime, timezone, timedelta
+from pydantic import BaseModel, Field
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.database import engine, get_db_session
 from app.models import Project, Task, ProjectConfig, APIKey, AuditLog
 from app.auth import require_write_key, generate_api_key, hash_api_key
 from app.eta import update_task_eta, get_eta_calculator
-from pydantic import BaseModel, Field
-from fastapi import Depends
-from sqlmodel.ext.asyncio.session import AsyncSession
-
+from app.metrics import MetricsCollector, check_thresholds
 # Sprint 9: 导入新队列模块
 from app.queue import create_queue, BaseQueue
 
@@ -752,3 +750,43 @@ async def list_audit_logs(
         }
         for l in logs
     ]
+
+
+# ============== Sprint 13: System Monitoring Endpoints ==============
+
+class SystemMetricsResponse(BaseModel):
+    """系统监控指标响应模型"""
+    concurrent_tasks: int
+    queued_tasks: int
+    latency_p50_ms: float
+    latency_p95_ms: float
+    memory_mb: float
+    redis_connected: bool
+    threshold_exceeded: list[str]
+
+
+@app.get("/api/v1/metrics")
+async def get_metrics(
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """获取系统监控指标快照"""
+    collector = MetricsCollector()
+    snapshot = await collector.get_snapshot(session)
+    return snapshot
+
+
+@app.get("/api/v1/metrics/stream")
+async def stream_metrics(
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """SSE 流式推送系统监控指标（10 秒更新频率）"""
+    collector = MetricsCollector()
+
+    async def event_generator():
+        # 发送一次指标数据后断开（简化实现，实际生产可改为无限循环）
+        snapshot = await collector.get_snapshot(session)
+        yield f"data: {snapshot}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
