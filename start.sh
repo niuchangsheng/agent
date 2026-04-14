@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # SECA 项目启动脚本
-# 用法：./start.sh [backend|frontend|all]
+# 用法：./start.sh <command> [service]
+# command: start, stop, status, restart
+# service: backend, frontend, all (可选，默认 all)
 
 set -e
 
@@ -132,7 +134,7 @@ start_backend() {
     # 检查是否已有 uvicorn 进程在运行
     if check_process_running "uvicorn app.main:app"; then
         log_warning "后端服务似乎已经在运行"
-        log_info "如需重启，请先停止现有进程：pkill -f 'uvicorn app.main:app'"
+        log_info "如需重启，请使用：$0 restart backend"
         return 1
     fi
 
@@ -145,8 +147,17 @@ start_backend() {
     log_info "FastAPI 服务运行在 http://localhost:8000"
     log_info "API 文档：http://localhost:8000/docs"
 
-    # 启动 uvicorn
-    exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    # 启动 uvicorn（后台）
+    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload &
+    echo $! > /tmp/seca_backend.pid
+
+    # 等待端口就绪
+    if wait_for_port 8000 15; then
+        log_success "后端服务已启动"
+    else
+        log_error "后端服务启动失败"
+        return 1
+    fi
 }
 
 # 启动前端服务
@@ -163,7 +174,7 @@ start_frontend() {
     # 检查是否已有 vite 进程在运行
     if check_process_running "vite"; then
         log_warning "前端服务似乎已经在运行"
-        log_info "如需重启，请先停止现有进程：pkill -f 'vite'"
+        log_info "如需重启，请使用：$0 restart frontend"
         return 1
     fi
 
@@ -172,152 +183,94 @@ start_frontend() {
     log_info "Vite 开发服务器运行在 http://localhost:5173"
     log_info "API 请求将代理到 http://localhost:8000"
 
-    # 启动 vite
-    exec npm run dev
+    # 启动 vite（后台）
+    npm run dev > /tmp/seca_frontend.log 2>&1 &
+    echo $! > /tmp/seca_frontend.pid
+
+    sleep 2
+    if check_process_running "vite"; then
+        log_success "前端服务已启动"
+    else
+        log_error "前端服务启动失败"
+        return 1
+    fi
 }
 
-# 同时启动前后端（使用后台进程）
+# 启动所有服务
 start_all() {
     log_info "启动所有服务..."
+    start_backend
+    start_frontend
+}
 
-    # 检查端口占用
-    if ! check_port_available 8000 "后端服务"; then
-        log_error "后端端口 8000 已被占用，请先停止现有服务"
-        return 1
-    fi
-    if ! check_port_available 5173 "前端服务"; then
-        log_error "前端端口 5173 已被占用，请先停止现有服务"
-        return 1
-    fi
-
-    # 检查后端环境
-    check_backend_env
-    check_frontend_env
-
-    # 启动后端（后台）
-    log_info "启动后端服务（后台进程）..."
-    source "${BACKEND_DIR}/venv/bin/activate"
-    cd "${BACKEND_DIR}"
-    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload &
-    BACKEND_PID=$!
-
-    # 等待后端端口就绪
-    log_info "等待后端服务就绪..."
-    if wait_for_port 8000 15; then
-        log_success "后端服务已启动 (PID: ${BACKEND_PID})"
+# 停止后端服务
+stop_backend() {
+    log_info "停止后端服务..."
+    if pgrep -f "uvicorn app.main:app" > /dev/null; then
+        pkill -f "uvicorn app.main:app"
+        sleep 1
+        log_success "后端服务已停止"
     else
-        log_error "后端服务启动失败，请检查日志"
-        kill ${BACKEND_PID} 2>/dev/null || true
-        return 1
+        log_warning "后端服务未运行"
     fi
+}
 
-    # 启动前端（前台）
-    log_info "启动前端服务..."
-    cd "${FRONTEND_DIR}"
-    npm run dev
-
-    # 等待所有后台进程
-    wait
+# 停止前端服务
+stop_frontend() {
+    log_info "停止前端服务..."
+    if pgrep -f "vite" > /dev/null; then
+        pkill -f "vite"
+        sleep 1
+        log_success "前端服务已停止"
+    else
+        log_warning "前端服务未运行"
+    fi
 }
 
 # 重启后端服务
 restart_backend() {
-    log_info "重启后端服务..."
-
-    # 停止现有进程
-    if pgrep -f "uvicorn app.main:app" > /dev/null; then
-        log_info "停止现有后端进程..."
-        pkill -f "uvicorn app.main:app"
-        sleep 2
-    fi
-
-    # 等待端口释放
-    log_info "等待端口 8000 释放..."
-    local attempts=0
-    while [ $attempts -lt 10 ]; do
-        if check_port_available 8000 "后端服务"; then
-            break
-        fi
-        sleep 1
-        attempts=$((attempts + 1))
-    done
-
-    # 启动新进程
+    stop_backend
+    sleep 2
     start_backend
 }
 
 # 重启前端服务
 restart_frontend() {
-    log_info "重启前端服务..."
-
-    # 停止现有进程
-    if pgrep -f "vite" > /dev/null; then
-        log_info "停止现有前端进程..."
-        pkill -f "vite"
-        sleep 2
-    fi
-
-    # 等待端口释放
-    log_info "等待端口 5173 释放..."
-    local attempts=0
-    while [ $attempts -lt 10 ]; do
-        if check_port_available 5173 "前端服务"; then
-            break
-        fi
-        sleep 1
-        attempts=$((attempts + 1))
-    done
-
-    # 启动新进程
+    stop_frontend
+    sleep 2
     start_frontend
 }
 
 # 重启所有服务
 restart_all() {
-    log_info "重启所有服务..."
-
-    # 停止后端
-    if pgrep -f "uvicorn app.main:app" > /dev/null; then
-        log_info "停止后端进程..."
-        pkill -f "uvicorn app.main:app"
-    fi
-
-    # 停止前端
-    if pgrep -f "vite" > /dev/null; then
-        log_info "停止前端进程..."
-        pkill -f "vite"
-    fi
-
-    # 等待端口释放
-    log_info "等待端口释放..."
-    sleep 3
-
-    # 启动所有
+    stop_all
+    sleep 2
     start_all
 }
 
 # 显示帮助信息
 show_help() {
-    echo "SECA 项目启动脚本"
+    echo "SECA 项目服务管理脚本"
     echo ""
-    echo "用法：$0 [命令]"
+    echo "用法：$0 <command> [service]"
     echo ""
     echo "命令:"
-    echo "  backend     - 仅启动后端 FastAPI 服务 (端口 8000)"
-    echo "  frontend    - 仅启动前端 Vite 服务 (端口 5173)"
-    echo "  all         - 同时启动前后端服务（默认）"
-    echo "  restart     - 重启所有服务"
-    echo "  restart-be  - 仅重启后端服务"
-    echo "  restart-fe  - 仅重启前端服务"
-    echo "  stop        - 停止所有服务"
-    echo "  status      - 查看服务运行状态"
-    echo "  help        - 显示此帮助信息"
+    echo "  start   - 启动服务"
+    echo "  stop    - 停止服务"
+    echo "  status  - 查看服务状态"
+    echo "  restart - 重启服务"
+    echo ""
+    echo "服务:"
+    echo "  backend  - 后端 FastAPI 服务 (端口 8000)"
+    echo "  frontend - 前端 Vite 服务 (端口 5173)"
+    echo "  all      - 所有服务（默认）"
     echo ""
     echo "示例:"
-    echo "  $0            # 启动所有服务"
-    echo "  $0 backend    # 仅启动后端"
-    echo "  $0 restart    # 重启所有服务"
-    echo "  $0 status     # 查看服务状态"
+    echo "  $0 start              # 启动所有服务"
+    echo "  $0 start backend      # 启动后端"
+    echo "  $0 stop frontend      # 停止前端"
+    echo "  $0 restart            # 重启所有"
+    echo "  $0 status backend     # 查看后端状态"
 }
 
 # 停止所有服务
@@ -343,68 +296,94 @@ stop_all() {
     fi
 }
 
-# 查看服务状态
-status_all() {
+# 查看后端状态
+status_backend() {
     echo ""
-    log_info "=== 服务运行状态 ==="
-    echo ""
-
-    # 后端状态
+    log_info "=== 后端服务状态 ==="
     if pgrep -f "uvicorn app.main:app" > /dev/null; then
-        log_success "后端服务：运行中"
+        log_success "运行中"
         pgrep -af "uvicorn app.main:app"
         if command -v ss &> /dev/null; then
             ss -tln | grep ":8000" || true
         fi
     else
-        log_warning "后端服务：未运行"
+        log_warning "未运行"
     fi
     echo ""
+}
 
-    # 前端状态
+# 查看前端状态
+status_frontend() {
+    echo ""
+    log_info "=== 前端服务状态 ==="
     if pgrep -f "vite" > /dev/null; then
-        log_success "前端服务：运行中"
+        log_success "运行中"
         pgrep -af "vite"
         if command -v ss &> /dev/null; then
             ss -tln | grep ":5173" || true
         fi
     else
-        log_warning "前端服务：未运行"
+        log_warning "未运行"
     fi
     echo ""
 }
 
-# 主逻辑
-case "${1:-all}" in
-    backend)
-        start_backend
+# 查看所有服务状态
+status_all() {
+    status_backend
+    status_frontend
+}
+
+# 主逻辑：./start.sh <command> [service]
+# command: start, stop, status, restart
+# service: backend, frontend, all (默认)
+
+COMMAND="${1:-}"
+SERVICE="${2:-all}"
+
+# 验证命令
+case "${COMMAND}" in
+    start|stop|status|restart)
         ;;
-    frontend)
-        start_frontend
-        ;;
-    all)
-        start_all
-        ;;
-    restart)
-        restart_all
-        ;;
-    restart-be)
-        restart_backend
-        ;;
-    restart-fe)
-        restart_frontend
-        ;;
-    stop)
-        stop_all
-        ;;
-    status)
-        status_all
-        ;;
-    help|-h|--help)
+    help|-h|--help|"")
         show_help
+        exit 0
         ;;
     *)
-        log_error "未知命令：$1"
+        log_error "未知命令：${COMMAND}"
+        show_help
+        exit 1
+        ;;
+esac
+
+# 执行命令
+case "${SERVICE}" in
+    backend)
+        case "${COMMAND}" in
+            start) start_backend ;;
+            stop) stop_backend ;;
+            status) status_backend ;;
+            restart) restart_backend ;;
+        esac
+        ;;
+    frontend)
+        case "${COMMAND}" in
+            start) start_frontend ;;
+            stop) stop_frontend ;;
+            status) status_frontend ;;
+            restart) restart_frontend ;;
+        esac
+        ;;
+    all)
+        case "${COMMAND}" in
+            start) start_all ;;
+            stop) stop_all ;;
+            status) status_all ;;
+            restart) restart_all ;;
+        esac
+        ;;
+    *)
+        log_error "未知服务：${SERVICE}"
         show_help
         exit 1
         ;;
