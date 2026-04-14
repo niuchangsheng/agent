@@ -1,308 +1,198 @@
-# Sprint 13 QA 评审报告
+# QA 评审反馈：Sprint 14 - 前端监控仪表盘
 
-## 评审元数据
-- **评审 Sprint**: Sprint 13 - 系统监控仪表盘
-- **评审日期**: 2026-04-15
-- **评审方**: SECA Evaluator (零容忍 QA)
-- **评审模式**: 实操模拟 + 回归验证
+## 评审概况
+- **评审时间**: 2026-04-15
+- **评审官**: SECA Evaluator
+- **Sprint 状态**: [!] 打回（总分 < 7.0）
 
 ---
 
-## 1. TDD 合规检查
+## 冒烟门禁测试结果
 
-### 测试结果
+### 后端服务
+- **启动命令**: `cd /home/chang/agent/src/backend && source venv/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port 8000`
+- **健康检查**: `curl -s http://localhost:8000/api/v1/health`
+- **响应**: `{"status":"active"}` ✅ 通过
+
+### 前端服务
+- **启动命令**: `cd /home/chang/agent/src/frontend && npm run dev`
+- **页面检查**: `curl -s http://localhost:5173 | grep "<title>"`
+- **响应**: `<title>frontend</title>` ✅ 通过
+
+### Metrics API 验证
+- **端点**: `GET /api/v1/metrics`
+- **响应示例** (带有效 API Key):
+```json
+{
+    "concurrent_tasks": 1,
+    "queued_tasks": 3,
+    "latency_p50_ms": 140.0,
+    "latency_p95_ms": 34752.0,
+    "memory_mb": 72.7421875,
+    "redis_connected": false,
+    "threshold_exceeded": ["latency_p95", "redis_connected"]
+}
 ```
-======================= 19 passed, 7 warnings in 18.72s ========================
-```
+- **注意**: API 需要 `X-API-Key` 认证头，但前端组件未配置
+
+---
+
+## TDD 合规检查
 
 ### 测试覆盖分析
-| 测试类别 | 用例数 | 通过率 | 状态 |
-|---------|--------|--------|------|
-| 指标采集器测试 | 10 | 10/10 (100%) | ✅ |
-| 监控 API 测试 | 3 | 3/3 (100%) | ✅ |
-| 监控集成测试 | 1 | 1/1 (100%) | ✅ |
-| 阈值告警测试 | 5 | 5/5 (100%) | ✅ |
-| Sprint 1-12 全量回归 | 32 | 32/32 (100%) | ✅ |
+| 合同验收项 | 测试用例 | 覆盖状态 |
+|-----------|---------|---------|
+| 仪表盘渲染 | `test_metrics_dashboard_renders` | ✅ 已覆盖 |
+| 显示全部指标 | `test_metrics_dashboard_displays_metrics` | ✅ 已覆盖 |
+| 阈值告警视觉 | `test_metrics_dashboard_threshold_alert` | ✅ 已覆盖 |
+| Redis 状态 | `test_metrics_dashboard_redis_status` | ✅ 已覆盖 |
+| 自动刷新 | `test_metrics_dashboard_auto_refresh` | ✅ 已覆盖 |
+| API 集成 | ❌ 缺失 | ❌ **未覆盖** |
+| SSE 连接 | ❌ 缺失 | ❌ **未覆盖** |
 
-### TDD 合规判定
-- ✅ 测试先行：测试文件 `test_metrics.py` 包含 19 个针对性测试
-- ✅ Red→Green：所有测试通过
-- ✅ 边界测试：包含无数据、Redis 断开、阈值超出等边界场景
-- ✅ 测试覆盖：合同要求的全部功能点均有对应测试
+### 回归测试
+- **前端全量测试**: 29 个测试全部通过 ✅
+- **后端 metrics 测试**: 18 个通过，1 个环境失败（数据库锁定，非 Sprint 14 缺陷）✅
 
-**证据**: `19 passed` 测试结果
+### 代码质量审计
+- **TDD 执行**: 测试先行 ✓，组件实现 ✓
+- **TypeScript 类型**: 完整定义 `MetricsData` 接口 ✓
+- **错误处理**: `try/catch` 捕获 fetch 错误 ✓
+- **Lint 检查**: 待执行
 
 ---
 
-## 2. 冒烟门禁测试 (BLOCKER 级别)
+## 致命缺陷发现
 
-### 后端服务启动验证
+### [BLOCKER] 缺失 API Key 认证集成
+
+**问题描述**: 
+- `MetricsDashboard.tsx` 组件调用 `/api/v1/metrics` 时**未携带 API Key 认证头**
+- 后端 `require_write_key` 依赖要求 `X-API-Key` 请求头
+- 实际运行时，前端无法从后端获取任何监控数据
+
+**证据**:
 ```bash
-$ python -c "from app.main import app; print('App loads OK')"
-App loads OK
+# 无 API Key 请求 → 被拒绝
+$ curl -s http://localhost:8000/api/v1/metrics
+{"detail": "Missing API key"}
+
+# 有 API Key 请求 → 正常返回
+$ curl -s -H "X-API-Key: ZkeBw2YXExkvoS2aGKmuD_ofUsOrN0kd2VdgXcCsoiE" http://localhost:8000/api/v1/metrics
+{"concurrent_tasks": 1, "queued_tasks": 3, ...}
 ```
 
-**判定**: ✅ 后端应用加载成功
+**合同违反**:
+- Sprint 14 合同明确要求："使用 SSE 或轮询连接 `/api/v1/metrics`"
+- 当前实现**无法真正连接**，因为缺少认证
+- 验收测试清单中 `test_metrics_dashboard_api_integration` 未实现
 
-### 后端 API 健康检查
-```python
-# 通过测试验证 API 端点
-$ python -m pytest tests/test_metrics.py::TestMetricsAPI::test_metrics_snapshot_api -v
-tests/test_metrics.py::TestMetricsAPI::test_metrics_snapshot_api PASSED
-```
-
-**判定**: ✅ 监控 API 端点正常工作
+**影响范围**:
+- 前端组件在实际环境中无法获取真实数据
+- 用户打开监控页面只会看到空值或错误状态
+- 功能完整性严重受损
 
 ---
 
-## 3. API 端点实测
+## 四维修炼打分
 
-### 3.1 监控快照 API 验证
-```python
-# 测试验证响应数据结构
-response = await client.get("/api/v1/metrics", headers=headers)
-assert response.status_code == 200
-data = response.json()
-assert "concurrent_tasks" in data
-assert "queued_tasks" in data
-assert "latency_p50_ms" in data
-assert "latency_p95_ms" in data
-assert "memory_mb" in data
-assert "redis_connected" in data
-assert "threshold_exceeded" in data
-```
-
-**判定**: ✅ 监控快照 API 返回完整指标
-
-### 3.2 监控 SSE 流验证
-```python
-response = await client.get("/api/v1/metrics/stream", headers=headers)
-assert response.status_code == 200
-assert "text/event-stream" in response.headers.get("content-type", "")
-```
-
-**判定**: ✅ SSE 流式推送端点正常
-
-### 3.3 指标采集器功能验证
-```python
-# 并发任务数统计（1 个 RUNNING）
-concurrent = await collector.get_concurrent_tasks(session)
-assert concurrent == 1
-
-# 队列等待数统计（2 个 QUEUED）
-queued = await collector.get_queued_tasks(session)
-assert queued == 2
-
-# 内存使用量采集
-memory_mb = collector.get_memory_usage_mb()
-assert memory_mb > 0 and memory_mb < 10240
-
-# Redis 连接状态（无配置时返回 False）
-status = collector.get_redis_status()
-assert status is False  # 无 REDIS_URL 环境
-
-# P50/P95 延迟计算
-p50, p95 = await collector.get_latency_percentiles(session)
-assert p50 >= 0 and p95 >= p50
-```
-
-**判定**: ✅ 指标采集器功能全部正常
-
-### 3.4 阈值告警验证
-```python
-# 队列长度超阈值
-alerts = check_thresholds(queued_tasks=150, p95_ms=100, memory_mb=500, redis_connected=True)
-assert "queued_tasks" in alerts
-
-# P95 延迟超阈值
-alerts = check_thresholds(queued_tasks=10, p95_ms=1500, memory_mb=500, redis_connected=True)
-assert "latency_p95" in alerts
-
-# 内存超阈值
-alerts = check_thresholds(queued_tasks=10, p95_ms=100, memory_mb=1500, redis_connected=True)
-assert "memory_mb" in alerts
-
-# Redis 断开告警
-alerts = check_thresholds(queued_tasks=10, p95_ms=100, memory_mb=500, redis_connected=False)
-assert "redis_connected" in alerts
-
-# 无阈值超出
-alerts = check_thresholds(queued_tasks=10, p95_ms=100, memory_mb=500, redis_connected=True)
-assert len(alerts) == 0
-```
-
-**判定**: ✅ 阈值告警检测正确
+| 评估维度 | 得分 | 权重 | 加权分 | 证据引用 |
+|---------|------|------|--------|---------|
+| **功能完整实现度** | 5/10 | 35% | 1.75 | 合同要求"连接 `/api/v1/metrics`"，但组件未集成 API Key 认证，无法真正获取数据。验收测试清单中 `test_metrics_dashboard_api_integration` 缺失。 |
+| **设计工程质量** | 8/10 | 25% | 2.00 | 卡片布局符合项目 Tailwind 风格，警告色（橙色/红色）正确应用，响应式网格 `grid-cols-2 md:grid-cols-3 lg:grid-cols-6` 适配多种屏幕。 |
+| **代码内聚素质** | 8/10 | 20% | 1.60 | TypeScript 类型定义完整，错误处理有 `try/catch`，6 个单元测试全部通过，TDD 执行规范。 |
+| **人类感受用户体验** | 6/10 | 20% | 1.20 | 组件 UI 设计良好，但因无法获取真实数据，用户实际看到的可能一直是 loading 或错误状态（取决于错误处理逻辑）。 |
+| **总计** | | | **6.55** | **< 7.0 及格线** ❌ |
 
 ---
 
-## 4. 回归验证
+## 判定结果
 
-### Sprint 7: 任务队列回归
+**[!] Sprint 14 打回**
+
+### 必修打回要求 [!]
+
+1. **[!] 集成 API Key 认证**: 
+   - `MetricsDashboard.tsx` 需要从 localStorage 或全局状态获取 API Key
+   - 在 fetch 请求中添加 `headers: { 'X-API-Key': apiKey }`
+   - 或修改后端 `/api/v1/metrics` 为公开端点（不需要认证）
+
+2. **[!] 补充集成测试**:
+   - 添加 `test_metrics_dashboard_api_integration` 测试
+   - 验证组件能够正确发送 API Key 请求头
+
+3. **[!] 修复合同验收项**:
+   - 验收测试清单中明确列出的 `test_metrics_dashboard_api_integration` 必须实现
+   - 验收测试清单中明确列出的 `test_metrics_dashboard_sse_connection` 必须实现（或使用轮询替代说明）
+
+---
+
+## 整改指导建议
+
+### 建议方案 A: 前端集成 API Key（推荐）
+```typescript
+// MetricsDashboard.tsx 修改示例
+const fetchMetrics = async () => {
+  try {
+    // 从 localStorage 获取最近使用的 API Key
+    const apiKey = localStorage.getItem('api_key') || '';
+    const response = await fetch('/api/v1/metrics', {
+      headers: { 'X-API-Key': apiKey }
+    });
+    // ... 其余逻辑不变
+  }
+};
+```
+
+### 建议方案 B: 后端开放 Metrics 端点
 ```python
-tests/test_task_queue.py - 队列基础功能正常
+# main.py 修改示例
+@app.get("/api/v1/metrics")
+async def get_metrics(session: AsyncSession = Depends(get_db_session)):
+    """获取系统监控指标快照 - 无需认证（监控数据本身不敏感）"""
+    # 移除 api_key: APIKey = Depends(require_write_key) 依赖
 ```
-**判定**: ✅ 队列功能正常
 
-### Sprint 9: Redis 队列持久化回归
-```python
-tests/test_redis_queue.py - Redis 队列测试跳过（无 Redis 环境）
+---
+
+## 回归验证
+
+| Sprint | 关键路径 | 验证结果 |
+|--------|---------|---------|
+| Sprint 1-5 | Dashboard 渲染 | ✅ 29 个前端测试通过 |
+| Sprint 6-8 | API Key 管理 | ✅ 后端 auth 端点正常 |
+| Sprint 9-13 | 任务队列 | ✅ `/api/v1/tasks` 正常返回 |
+
+---
+
+## 附录：终端证据
+
+### 前端测试输出
 ```
-**判定**: ✅ 降级逻辑正常
-
-### Sprint 10: API Key 加密存储回归
-```python
-tests/test_auth.py::test_api_key_creation - API Key 创建正常
-tests/test_auth.py::test_api_key_list - 列表不暴露 key_hash 字段
+> vitest --run
+Test Files  7 passed (7)
+Tests  29 passed (29)
 ```
-**判定**: ✅ 加密存储正常
 
-### Sprint 11: 审计日志回归
-```python
-tests/test_auth.py::test_audit_log_created_on_write - 审计日志创建正常
-tests/test_audit_logs.py - 审计日志查询测试通过
+### 后端 metrics 测试输出
 ```
-**判定**: ✅ 审计日志功能正常
-
-### Sprint 12: ETA 预测回归
-```python
-tests/test_eta.py - 32 个测试全部通过
+PASSED tests/test_metrics.py::TestMetricsCollector::test_metrics_collector_initialization
+PASSED tests/test_metrics.py::TestMetricsCollector::test_get_memory_info
+...
+FAILED tests/test_metrics.py::TestMetricsIntegration::test_metrics_update_on_task_submission
+(数据库锁定环境问题，非代码缺陷)
 ```
-**判定**: ✅ ETA 预测和优先级队列正常
 
-### 全量回归测试
+### API 验证
+```bash
+$ curl -s http://localhost:8000/api/v1/metrics
+{"detail": "Missing API key"}
+
+$ curl -s -H "X-API-Key: <valid_key>" http://localhost:8000/api/v1/metrics
+{"concurrent_tasks": 1, "queued_tasks": 3, ...}
 ```
-======================== 32 passed in 132.33s (0:02:12) ========================
-```
-**判定**: ✅ 32 个回归测试全部通过
 
 ---
 
-## 5. 四维修炼打分
-
-### 功能完整性 (35% 权重)
-**得分**: 9/10
-
-**评分依据**:
-- ✅ 合同要求的全部功能已实现：
-  - ✅ 指标采集器（并发任务数、队列等待数、内存使用量、Redis 状态、P50/P95 延迟）
-  - ✅ 监控快照 API (`GET /api/v1/metrics`)
-  - ✅ 监控 SSE 流 (`GET /api/v1/metrics/stream`)
-  - ✅ 阈值告警检测（队列长度、延迟、内存、Redis 连接）
-  - ✅ 响应模型包含所有必需字段
-- ✅ 19 个 Sprint 13 专用测试全部通过
-- ✅ 全量回归测试 32/32 通过
-
-**证据**: `19 passed` 测试结果；API 测试验证响应数据完整
-
-**扣分原因**: 前端监控仪表盘组件尚未实现（合同提到但本期聚焦后端）
-
----
-
-### 设计质量 (25% 权重)
-**得分**: 9/10
-
-**评分依据**:
-- ✅ `MetricsCollector` 类职责单一，方法命名清晰
-- ✅ 异步方法设计合理（`get_concurrent_tasks`, `get_queued_tasks`, `get_latency_percentiles`）
-- ✅ 阈值定义集中管理（`THRESHOLDS` 字典）
-- ✅ `check_thresholds` 函数纯函数设计，易于测试
-- ✅ 代码结构清晰，类型注解完整
-
-**证据**: `app/metrics.py` 代码结构
-
-**扣分原因**: 无重大设计缺陷，扣 1 分因为指标采集在每次请求时都查询数据库（可考虑添加缓存）
-
----
-
-### 代码质量 (20% 权重)
-**得分**: 9/10
-
-**评分依据**:
-- ✅ TDD 流程合规：测试文件先于实现提交
-- ✅ 测试覆盖率高：19 个新测试覆盖所有场景
-- ✅ 类型注解完整（`Optional`, `List`, `Tuple`, `Dict`）
-- ✅ 异常处理正确（无数据时返回 0、Redis 库未安装时返回 False）
-- ✅ 全量回归测试通过（32/32）
-
-**证据**: `19 passed` 测试结果；`32 passed` 回归测试
-
-**扣分原因**: 无重大代码质量问题，扣 1 分因为测试中存在非异步函数使用 `@pytest.mark.asyncio` 警告（7 个）
-
----
-
-### 用户体验 (20% 权重)
-**得分**: 7/10
-
-**评分依据**:
-- ✅ API 接口保持向后兼容
-- ✅ 监控快照响应格式直观（包含所有必需字段）
-- ✅ 阈值告警列表清晰（`threshold_exceeded` 字段）
-- ✅ SSE 流式推送支持实时刷新
-- ⚠️ 前端监控仪表盘组件尚未实现
-- ⚠️ 无阈值告警视觉高亮（需前端实现）
-
-**证据**: API 响应包含 `threshold_exceeded: []` 字段
-
-**扣分原因**: 
-- 扣 2 分：前端监控仪表盘组件未实现（合同交付物）
-- 扣 1 分：无阈值告警视觉高亮（需前端配合）
-
----
-
-## 6. 总分计算
-
-| 维度 | 得分 | 权重 | 加权分 |
-|------|------|------|--------|
-| 功能完整性 | 9.0 | 35% | 3.15 |
-| 设计质量 | 9.0 | 25% | 2.25 |
-| 代码质量 | 9.0 | 20% | 1.80 |
-| 用户体验 | 7.0 | 20% | 1.40 |
-| **总计** | | | **8.60** |
-
-**判定阈值**: ≥ 7.0 分通过；所有单项 ≥ 6 分
-
-**最终判定**: ✅ **通过** (8.60 ≥ 7.0)
-
----
-
-## 7. 问题整改建议
-
-### 非阻塞优化建议（后续 Sprint 处理）
-1. **前端监控仪表盘**: 实现 `MetricsDashboard.tsx` 组件，显示各项指标
-2. **阈值告警视觉**: 前端对超出阈值的指标进行橙色/红色高亮
-3. **指标缓存**: 考虑添加 Redis 缓存，减少数据库查询频率
-4. **历史趋势**: 考虑添加指标历史记录功能（非本期需求）
-5. **测试警告清理**: 移除 7 个非异步测试的 `@pytest.mark.asyncio` 标记
-
----
-
-## 8. 评审结论
-
-### ✅ Sprint 13: 系统监控仪表盘 [x] 通过
-
-**判定依据**:
-- 加权总分 **8.60 ≥ 7.0** ✅
-- 所有单项 ≥ 6 分 ✅
-- 冒烟测试通过 ✅
-- TDD 合规性验证通过 ✅
-- 回归测试无退化 (32/32 通过) ✅
-
-**关键证据链**:
-1. 19/19 Sprint 13 测试通过
-2. 监控快照 API 返回完整指标（concurrent_tasks, queued_tasks, latency_p50/p95, memory_mb, redis_connected, threshold_exceeded）
-3. SSE 流式推送端点正常工作
-4. 阈值告警检测正确（队列长度、延迟、内存、Redis 连接）
-5. Sprint 7/9/10/11/12 回归测试全部通过
-
-**技术债务更新**:
-- ~~缺系统监控 (中)~~ → ✅ Sprint 13 已完成（后端指标采集器 + API）
-
-**待完成工作**:
-- 前端监控仪表盘组件实现（可在下一版本进行）
-
-**准予结项**: v1.2 版本全部 Sprint 完成
-
----
-
-*报告生成时间*: 2026-04-15  
-*评审工具*: SECA Evaluator (QA Mode)
+**评审官签名**: SECA Evaluator
+**下次动作**: Generator 修复上述 [!] 问题后重新提交 QA

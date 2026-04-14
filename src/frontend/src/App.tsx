@@ -4,6 +4,7 @@ import PlaybackTree from './components/PlaybackTree';
 import ConfigPanel from './components/ConfigPanel';
 import TaskQueueDashboard from './components/TaskQueueDashboard';
 import ApiKeyManager from './components/ApiKeyManager';
+import MetricsDashboard from './components/MetricsDashboard';
 
 interface Task {
   id: number;
@@ -16,7 +17,7 @@ function App() {
   const [status, setStatus] = useState<string>('Detecting...');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'queue' | 'config' | 'auth'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'queue' | 'config' | 'auth' | 'metrics'>('dashboard');
 
   useEffect(() => {
     fetch('/api/v1/health')
@@ -116,6 +117,16 @@ function App() {
         >
           API Keys
         </button>
+        <button
+          onClick={() => setActiveTab('metrics')}
+          className={`px-4 py-2 rounded font-medium transition-colors ${
+            activeTab === 'metrics'
+              ? 'bg-blue-600 text-white'
+              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+          }`}
+        >
+          Monitoring
+        </button>
       </div>
 
       {selectedTaskId ? (
@@ -131,6 +142,8 @@ function App() {
             <ConfigPanel projectId={tasks.find(t => t.id === selectedTaskId)?.project_id || 0} />
           ) : activeTab === 'auth' ? (
             <ApiKeyManager />
+          ) : activeTab === 'metrics' ? (
+            <MetricsDashboard />
           ) : null}
         </div>
       ) : (
