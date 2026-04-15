@@ -205,6 +205,12 @@ async def _save_audit_log(
 async def health_check():
     return {"status": "active"}
 
+@app.get("/api/v1/projects")
+async def list_projects(session: AsyncSession = Depends(get_db_session)):
+    """列出所有项目"""
+    result = await session.exec(select(Project).order_by(Project.id.desc()))
+    return result.all()
+
 @app.post("/api/v1/projects")
 async def create_project(
     proj: ProjectCreate,

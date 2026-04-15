@@ -30,7 +30,12 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ projectId, onConfigChange }) 
 
   useEffect(() => {
     // 获取项目列表
-    fetch('/api/v1/projects')
+    const apiKey = localStorage.getItem('api_key') || '';
+    fetch('/api/v1/projects', {
+      headers: {
+        'X-API-Key': apiKey
+      }
+    })
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -52,7 +57,14 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ projectId, onConfigChange }) 
   const fetchConfig = async (projId: number) => {
     setLoading(true);
     setError(null);
-    fetch(`/api/v1/projects/${projId}/config`)
+
+    const apiKey = localStorage.getItem('api_key') || '';
+
+    fetch(`/api/v1/projects/${projId}/config`, {
+      headers: {
+        'X-API-Key': apiKey
+      }
+    })
       .then(res => {
         if (res.status === 404) {
           setConfig(null);
