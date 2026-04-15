@@ -157,10 +157,9 @@
 - [x] 审计日志可追溯所有写操作
 
 ### v1.3 (进行中)
-- [!] Sprint 14: 前端监控仪表盘 — 实现 Feature 14
-  - 前端：MetricsDashboard 组件、SSE 消费者、阈值告警视觉
-  - 验收：实时显示指标、自动刷新、异常高亮
-  - QA 反馈：[!] 打回 (6.55/10) - 缺失 API Key 认证集成
+- [x] Sprint 14: 前端监控仪表盘 — 实现 Feature 14 ✅ QA 通过 (8.55/10)
+  - 前端：MetricsDashboard 组件、API Key 认证集成、阈值告警视觉
+  - 验收：实时显示指标、自动刷新、异常高亮、API Key 认证
   
 - [ ] Sprint 15: ETA 显示 + 优先级选择器 — 实现 Feature 15 + Feature 16
   - 前端：ETA 显示组件、优先级选择器、任务列表集成

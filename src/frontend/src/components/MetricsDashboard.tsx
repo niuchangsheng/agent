@@ -44,7 +44,13 @@ const MetricsDashboard: React.FC = () => {
 
   const fetchMetrics = async () => {
     try {
-      const response = await fetch('/api/v1/metrics');
+      // Get API key from localStorage
+      const apiKey = localStorage.getItem('api_key') || '';
+      const response = await fetch('/api/v1/metrics', {
+        headers: {
+          'X-API-Key': apiKey
+        }
+      });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }

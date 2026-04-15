@@ -173,4 +173,92 @@ describe('MetricsDashboard', () => {
 
     vi.useRealTimers();
   });
+
+  it('sends API key in request headers', async () => {
+    // Mock localStorage
+    const mockLocalStorage = {
+      getItem: vi.fn(),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    };
+    mockLocalStorage.getItem.mockReturnValue('test-api-key-123');
+    Object.defineProperty(window, 'localStorage', {
+      value: mockLocalStorage,
+      writable: true,
+    });
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        concurrent_tasks: 3,
+        queued_tasks: 5,
+        latency_p50_ms: 50,
+        latency_p95_ms: 150,
+        memory_mb: 256,
+        redis_connected: true,
+        threshold_exceeded: [],
+      }),
+    } as Response);
+
+    render(<MetricsDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText('3')).toBeInTheDocument();
+    });
+
+    // Verify fetch was called with API key header
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/metrics',
+      expect.objectContaining({
+        headers: {
+          'X-API-Key': 'test-api-key-123'
+        }
+      })
+    );
+  });
+
+  it('handles missing API key gracefully', async () => {
+    // Mock localStorage with no API key
+    const mockLocalStorage = {
+      getItem: vi.fn(),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    };
+    mockLocalStorage.getItem.mockReturnValue('');
+    Object.defineProperty(window, 'localStorage', {
+      value: mockLocalStorage,
+      writable: true,
+    });
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        concurrent_tasks: 0,
+        queued_tasks: 0,
+        latency_p50_ms: 0,
+        latency_p95_ms: 0,
+        memory_mb: 0,
+        redis_connected: false,
+        threshold_exceeded: [],
+      }),
+    } as Response);
+
+    render(<MetricsDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Disconnected')).toBeInTheDocument();
+    });
+
+    // Verify fetch was called with empty API key header
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/metrics',
+      expect.objectContaining({
+        headers: {
+          'X-API-Key': ''
+        }
+      })
+    );
+  });
 });
