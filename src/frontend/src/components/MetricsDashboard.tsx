@@ -87,10 +87,20 @@ const MetricsDashboard: React.FC = () => {
   }
 
   if (error) {
+    const needsApiKey = error.includes('401') || error.includes('API key');
     return (
       <div className="p-6 rounded-xl border border-red-500/50 backdrop-blur-md bg-red-900/30">
         <h2 className="text-xl mb-4 text-white">System Monitoring</h2>
-        <div className="text-red-400">Error: {error}</div>
+        <div className="text-red-400">
+          {needsApiKey ? (
+            <div>
+              <p className="mb-2">⚠️ API Key required. Please create an API key first.</p>
+              <p className="text-sm text-slate-400">Go to the "API Keys" section to generate a key, then come back here.</p>
+            </div>
+          ) : (
+            <>Error: {error}</>
+          )}
+        </div>
       </div>
     );
   }

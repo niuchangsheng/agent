@@ -161,9 +161,9 @@
   - 前端：MetricsDashboard 组件、API Key 认证集成、阈值告警视觉
   - 验收：实时显示指标、自动刷新、异常高亮、API Key 认证
   
-- [ ] Sprint 15: ETA 显示 + 优先级选择器 — 实现 Feature 15 + Feature 16
-  - 前端：ETA 显示组件、优先级选择器、任务列表集成
-  - 验收：ETA 正确显示、优先级可选择可更新
+- [x] Sprint 15: ETA 显示 + 优先级选择器 — 实现 Feature 15 + Feature 16 ✅ QA 通过 (8.75/10)
+  - 前端：ETADisplay 组件、PrioritySelector 组件、TaskQueueDashboard 集成
+  - 验收：ETA 正确显示、优先级可选择可更新、高优先级视觉提示
   
 - [ ] Sprint 16: Docker 沙箱隔离 — 实现 Feature 17
   - 后端：Docker 容器管理、资源配额限制、安全隔离

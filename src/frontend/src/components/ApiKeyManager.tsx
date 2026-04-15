@@ -92,6 +92,8 @@ export default function ApiKeyManager() {
       if (res.ok) {
         const data: NewKeyResult = await res.json();
         setGeneratedKey(data.key);
+        // 同时保存到 localStorage 供其他组件使用
+        localStorage.setItem('api_key', data.key);
         setNewKeyName('');
         setNewKeyPermissions({ read: true, write: false, admin: false });
         fetchKeys();

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import ETADisplay from './ETADisplay';
+import PrioritySelector from './PrioritySelector';
 
 interface QueueTask {
   task_id: number;
@@ -6,6 +8,7 @@ interface QueueTask {
   raw_objective: string;
   queued_at: string;
   position?: number;
+  priority?: number;
 }
 
 interface RunningTask {
@@ -14,6 +17,9 @@ interface RunningTask {
   progress_percent: number;
   status_message: string;
   started_at: string;
+  priority?: number;
+  estimated_remaining_seconds?: number | null;
+  estimated_completion_at?: string | null;
 }
 
 interface QueueStatus {
@@ -128,7 +134,15 @@ const TaskQueueDashboard: React.FC = () => {
                         style={{ width: `${task.progress_percent}%` }}
                       />
                     </div>
-                    <div className="text-xs text-slate-400 mt-1">{task.progress_percent}% complete</div>
+                    <div className="flex justify-between items-center mt-2">
+                      <div className="text-xs text-slate-400">{task.progress_percent}% complete</div>
+                      <ETADisplay
+                        taskId={task.task_id}
+                        progressUpdates={Math.floor(task.progress_percent / 10) + 1}
+                        estimatedRemainingSeconds={task.estimated_remaining_seconds ?? null}
+                        estimatedCompletionAt={task.estimated_completion_at ?? null}
+                      />
+                    </div>
                   </div>
                 ))
               )}
@@ -147,21 +161,35 @@ const TaskQueueDashboard: React.FC = () => {
                     key={task.task_id}
                     className="p-3 bg-slate-800/30 rounded border border-amber-500/20 flex justify-between items-center"
                   >
-                    <div>
-                      <div className="text-white font-mono">
-                        Task #{task.task_id}
-                        <span className="ml-2 px-2 py-0.5 bg-amber-600/30 text-amber-400 rounded text-xs">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-white font-mono">Task #{task.task_id}</span>
+                        <span className="px-2 py-0.5 bg-amber-600/30 text-amber-400 rounded text-xs">
                           Position #{task.position}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded text-xs ${
+                          task.priority && task.priority >= 7
+                            ? 'bg-red-600/30 text-red-400'
+                            : 'bg-slate-600/30 text-slate-400'
+                        }`}>
+                          Priority: {task.priority ?? 0}
                         </span>
                       </div>
                       <div className="text-sm text-slate-400">{task.raw_objective}</div>
                     </div>
-                    <button
-                      onClick={() => handleCancelTask(task.task_id)}
-                      className="px-3 py-1 bg-red-600/50 hover:bg-red-600 rounded text-xs text-white"
-                    >
-                      Cancel
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <PrioritySelector
+                        taskId={task.task_id}
+                        value={task.priority ?? 0}
+                        onChange={() => fetchQueueStatus()}
+                      />
+                      <button
+                        onClick={() => handleCancelTask(task.task_id)}
+                        className="px-3 py-1 bg-red-600/50 hover:bg-red-600 rounded text-xs text-white"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
