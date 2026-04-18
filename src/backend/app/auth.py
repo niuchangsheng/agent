@@ -1,7 +1,7 @@
-"""Sprint 8 + Sprint 10: API Key 认证与权限模块（bcrypt 加密）"""
+"""Sprint 8 + Sprint 10: API Key 认证与权限模块（SHA-256 哈希）"""
 from fastapi import Request, HTTPException, Depends
 from sqlmodel import select
-import bcrypt
+import hashlib
 import secrets
 from datetime import datetime, timezone
 from app.models import APIKey
@@ -9,26 +9,22 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.database import get_db_session
 
 
-# bcrypt rounds 配置（平衡安全性和性能）
-BCRYPT_ROUNDS = 12
+# SHA-256 哈希（高性能，适合 API Key 验证）
 
 
 def hash_api_key(key: str) -> str:
     """
-    Sprint 10: 使用 bcrypt 哈希 API Key
-    每次调用产生不同哈希（因为随机盐）
+    使用 SHA-256 哈希 API Key（高性能）
     """
-    salt = bcrypt.gensalt(rounds=BCRYPT_ROUNDS)
-    return bcrypt.hashpw(key.encode(), salt).decode()
+    return hashlib.sha256(key.encode()).hexdigest()
 
 
 def verify_api_key(key: str, key_hash: str) -> bool:
     """
-    Sprint 10: 验证 API Key
-    使用 bcrypt 验证，不暴露原始密钥
+    验证 API Key（常数时间比较）
     """
     try:
-        return bcrypt.checkpw(key.encode(), key_hash.encode())
+        return hashlib.sha256(key.encode()).hexdigest() == key_hash
     except Exception:
         return False
 
