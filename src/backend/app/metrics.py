@@ -76,20 +76,37 @@ class MetricsCollector:
         return memory_bytes / (1024 * 1024)
 
     def get_redis_status(self) -> bool:
-        """获取 Redis 连接状态"""
-        redis_url = os.getenv("REDIS_URL")
-        if not redis_url:
+        """获取 Redis 连接状态（基于全局队列实例）"""
+        from app.main import global_queue
+
+        # 检查全局队列实例
+        if global_queue is None:
             return False
 
-        # 尝试连接 Redis 验证
-        try:
-            import redis
-            from redis.asyncio import Redis
-            # 这里只做简单检查，实际连接状态由队列管理
-            return True
-        except ImportError:
-            # redis 库未安装
-            return False
+        # 如果是 RedisQueue，返回其连接状态
+        if hasattr(global_queue, '_connected'):
+            return global_queue._connected
+
+        # 如果是 InMemoryQueue，返回 True（内存队列始终"连接"）
+        if hasattr(global_queue, 'queued'):
+            return True  # 内存队列可用
+
+        return False
+
+    def get_queue_type(self) -> str:
+        """获取队列类型（用于前端显示）"""
+        from app.main import global_queue
+
+        if global_queue is None:
+            return "none"
+
+        if hasattr(global_queue, '_connected'):
+            return "redis"
+
+        if hasattr(global_queue, 'queued'):
+            return "memory"
+
+        return "unknown"
 
     async def get_latency_percentiles(self, session: AsyncSession) -> Tuple[float, float]:
         """计算响应延迟的 P50/P95（基于审计日志）"""
@@ -125,14 +142,15 @@ class MetricsCollector:
         queued = await self.get_queued_tasks(session)
         memory = self.get_memory_usage_mb()
         redis_connected = self.get_redis_status()
+        queue_type = self.get_queue_type()
         p50, p95 = await self.get_latency_percentiles(session)
 
-        # 检查阈值
+        # 检查阈值（只有 Redis 队列断开才报警，内存队列不报警）
         exceeded = check_thresholds(
             queued_tasks=queued,
             p95_ms=p95,
             memory_mb=memory,
-            redis_connected=redis_connected
+            redis_connected=redis_connected if queue_type == "redis" else True
         )
 
         return {
@@ -142,5 +160,6 @@ class MetricsCollector:
             "latency_p95_ms": p95,
             "memory_mb": memory,
             "redis_connected": redis_connected,
+            "queue_type": queue_type,
             "threshold_exceeded": exceeded,
         }

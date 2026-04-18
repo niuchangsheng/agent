@@ -20,6 +20,7 @@ describe('MetricsDashboard', () => {
         latency_p95_ms: 0,
         memory_mb: 0,
         redis_connected: false,
+        queue_type: 'memory',
         threshold_exceeded: [],
       }),
     } as Response);
@@ -36,6 +37,7 @@ describe('MetricsDashboard', () => {
       latency_p95_ms: 150,
       memory_mb: 256,
       redis_connected: true,
+      queue_type: 'redis',
       threshold_exceeded: [],
     };
 
@@ -72,6 +74,7 @@ describe('MetricsDashboard', () => {
         latency_p95_ms: 0,
         memory_mb: 0,
         redis_connected: true,
+        queue_type: 'redis',
         threshold_exceeded: [],
       }),
     } as Response);
@@ -79,7 +82,29 @@ describe('MetricsDashboard', () => {
     render(<MetricsDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText('Connected')).toBeInTheDocument();
+      expect(screen.getByText('Redis Connected')).toBeInTheDocument();
+    });
+  });
+
+  it('shows Memory Queue status when using memory queue', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        concurrent_tasks: 0,
+        queued_tasks: 0,
+        latency_p50_ms: 0,
+        latency_p95_ms: 0,
+        memory_mb: 0,
+        redis_connected: true,
+        queue_type: 'memory',
+        threshold_exceeded: [],
+      }),
+    } as Response);
+
+    render(<MetricsDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Memory Queue')).toBeInTheDocument();
     });
   });
 
@@ -93,6 +118,7 @@ describe('MetricsDashboard', () => {
         latency_p95_ms: 0,
         memory_mb: 0,
         redis_connected: false,
+        queue_type: 'redis',
         threshold_exceeded: ['redis_connected'],
       }),
     } as Response);
@@ -100,7 +126,7 @@ describe('MetricsDashboard', () => {
     render(<MetricsDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText('Disconnected')).toBeInTheDocument();
+      expect(screen.getByText('Redis Disconnected')).toBeInTheDocument();
       expect(screen.getByText(/Warning:.*redis_connected/)).toBeInTheDocument();
     });
   });
@@ -115,6 +141,7 @@ describe('MetricsDashboard', () => {
         latency_p95_ms: 1500,
         memory_mb: 512,
         redis_connected: true,
+        queue_type: 'redis',
         threshold_exceeded: ['queued_tasks', 'latency_p95'],
       }),
     } as Response);
@@ -140,6 +167,7 @@ describe('MetricsDashboard', () => {
           latency_p95_ms: 0,
           memory_mb: 0,
           redis_connected: true,
+          queue_type: 'redis',
           threshold_exceeded: [],
         }),
       } as Response)
@@ -152,6 +180,7 @@ describe('MetricsDashboard', () => {
           latency_p95_ms: 0,
           memory_mb: 0,
           redis_connected: true,
+          queue_type: 'redis',
           threshold_exceeded: [],
         }),
       } as Response);
@@ -197,6 +226,7 @@ describe('MetricsDashboard', () => {
         latency_p95_ms: 150,
         memory_mb: 256,
         redis_connected: true,
+        queue_type: 'redis',
         threshold_exceeded: [],
       }),
     } as Response);
@@ -240,7 +270,8 @@ describe('MetricsDashboard', () => {
         latency_p50_ms: 0,
         latency_p95_ms: 0,
         memory_mb: 0,
-        redis_connected: false,
+        redis_connected: true,
+        queue_type: 'memory',
         threshold_exceeded: [],
       }),
     } as Response);
@@ -248,7 +279,7 @@ describe('MetricsDashboard', () => {
     render(<MetricsDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText('Disconnected')).toBeInTheDocument();
+      expect(screen.getByText('Memory Queue')).toBeInTheDocument();
     });
 
     // Verify fetch was called with empty API key header

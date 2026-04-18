@@ -7,6 +7,7 @@ interface MetricsData {
   latency_p95_ms: number;
   memory_mb: number;
   redis_connected: boolean;
+  queue_type: string;
   threshold_exceeded: string[];
 }
 
@@ -146,9 +147,15 @@ const MetricsDashboard: React.FC = () => {
           isWarning={isThresholdExceeded('memory_mb')}
         />
         <MetricsCard
-          title="Redis"
-          value={metrics.redis_connected ? 'Connected' : 'Disconnected'}
-          isWarning={!metrics.redis_connected}
+          title="Queue"
+          value={
+            metrics.queue_type === 'redis'
+              ? (metrics.redis_connected ? 'Redis Connected' : 'Redis Disconnected')
+              : metrics.queue_type === 'memory'
+                ? 'Memory Queue'
+                : 'Unknown'
+          }
+          isWarning={metrics.queue_type === 'redis' && !metrics.redis_connected}
         />
       </div>
 

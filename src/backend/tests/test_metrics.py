@@ -51,40 +51,72 @@ class TestMetricsCollector:
     @pytest.mark.asyncio
     async def test_metrics_collector_redis_status_connected(self):
         """Green 路径：Redis 连接状态检测（已连接）"""
-        import os
-        # 临时设置 Redis URL
-        original_redis_url = os.getenv("REDIS_URL")
-        os.environ["REDIS_URL"] = "redis://localhost:6379"
+        from unittest.mock import patch, MagicMock
 
-        try:
-            collector = MetricsCollector()
-            # 注意：这里只测试逻辑，不测试真实 Redis 连接
-            # 真实连接测试在集成测试中
+        collector = MetricsCollector()
+
+        # 模拟 global_queue 为 RedisQueue 且已连接
+        mock_queue = MagicMock()
+        mock_queue._connected = True
+
+        with patch('app.main.global_queue', mock_queue):
             status = collector.get_redis_status()
-            # 有 Redis 配置时返回 True（不验证实际连接）
-            assert status is True
-        finally:
-            if original_redis_url:
-                os.environ["REDIS_URL"] = original_redis_url
-            else:
-                os.environ.pop("REDIS_URL", None)
+            assert status is True, f"Redis 已连接时应返回 True，实际：{status}"
+
+            queue_type = collector.get_queue_type()
+            assert queue_type == "redis", f"队列类型应为 redis，实际：{queue_type}"
 
     @pytest.mark.asyncio
     async def test_metrics_collector_redis_status_disconnected(self):
         """Red 路径：Redis 连接状态检测（未连接）"""
-        import os
-        # 确保没有 Redis URL
-        original_redis_url = os.getenv("REDIS_URL")
-        os.environ.pop("REDIS_URL", None)
+        from unittest.mock import patch, MagicMock
 
-        try:
-            collector = MetricsCollector()
+        collector = MetricsCollector()
+
+        # 模拟 global_queue 为 RedisQueue 但未连接
+        mock_queue = MagicMock()
+        mock_queue._connected = False
+
+        with patch('app.main.global_queue', mock_queue):
             status = collector.get_redis_status()
-            # 没有 Redis 配置时应返回 False
-            assert status is False, f"无 Redis 配置时应返回 False，实际：{status}"
-        finally:
-            if original_redis_url:
-                os.environ["REDIS_URL"] = original_redis_url
+            assert status is False, f"Redis 未连接时应返回 False，实际：{status}"
+
+            queue_type = collector.get_queue_type()
+            assert queue_type == "redis", f"队列类型应为 redis，实际：{queue_type}"
+
+    @pytest.mark.asyncio
+    async def test_metrics_collector_memory_queue_status(self):
+        """Green 路径：内存队列状态检测"""
+        from unittest.mock import patch, MagicMock
+
+        collector = MetricsCollector()
+
+        # 模拟 global_queue 为 InMemoryQueue
+        mock_queue = MagicMock()
+        mock_queue.queued = []  # InMemoryQueue 有 queued 属性
+        del mock_queue._connected  # 确保没有 _connected 属性
+
+        with patch('app.main.global_queue', mock_queue):
+            status = collector.get_redis_status()
+            assert status is True, f"内存队列时应返回 True（可用），实际：{status}"
+
+            queue_type = collector.get_queue_type()
+            assert queue_type == "memory", f"队列类型应为 memory，实际：{queue_type}"
+
+    @pytest.mark.asyncio
+    async def test_metrics_collector_no_queue(self):
+        """Red 路径：无队列实例时状态检测"""
+        from unittest.mock import patch
+
+        collector = MetricsCollector()
+
+        # 模拟 global_queue 为 None
+        with patch('app.main.global_queue', None):
+            status = collector.get_redis_status()
+            assert status is False, f"无队列时应返回 False，实际：{status}"
+
+            queue_type = collector.get_queue_type()
+            assert queue_type == "none", f"队列类型应为 none，实际：{queue_type}"
 
     async def test_metrics_latency_percentile(self, async_client_with_data):
         """Green 路径：P50/P95 延迟计算正确"""
@@ -133,6 +165,7 @@ class TestMetricsCollector:
         assert "latency_p95_ms" in snapshot
         assert "memory_mb" in snapshot
         assert "redis_connected" in snapshot
+        assert "queue_type" in snapshot
         assert "threshold_exceeded" in snapshot
 
     async def test_metrics_threshold_detection(self, async_client_with_data):
@@ -164,6 +197,7 @@ class TestMetricsAPI:
         assert "latency_p95_ms" in data
         assert "memory_mb" in data
         assert "redis_connected" in data
+        assert "queue_type" in data
 
     async def test_metrics_stream_sse(self, client_with_auth):
         """Green 路径：SSE 流式推送正常"""
