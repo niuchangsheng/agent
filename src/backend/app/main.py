@@ -1273,7 +1273,7 @@ async def get_task_traces(
             "reasoning_log": trace.reasoning_log,
             "applied_patch": trace.applied_patch,
             "is_success": trace.is_success,
-            "timestamp": trace.created_at.isoformat() if trace.created_at else None,
+            "timestamp": None,  # Trace 模型暂无 created_at 字段
         }
         for trace in traces
     ]
