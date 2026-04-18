@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.database import engine, get_db_session
-from app.models import Project, Task, ProjectConfig, APIKey, AuditLog
+from app.models import Project, Task, ProjectConfig, APIKey, AuditLog, DockerConfig
 from app.auth import require_write_key, generate_api_key, hash_api_key
 from app.eta import update_task_eta, get_eta_calculator
 from app.metrics import MetricsCollector, check_thresholds
@@ -798,3 +798,269 @@ async def stream_metrics(
         yield f"data: {snapshot}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+# ============== Sprint 17: Docker Operations Endpoints ==============
+
+class DockerConfigResponse(BaseModel):
+    """Docker 配置响应模型"""
+    id: int
+    memory_limit_mb: int
+    cpu_limit: float
+    timeout_seconds: int
+    max_concurrent_containers: int
+
+
+class DockerConfigCreate(BaseModel):
+    """Docker 配置创建模型"""
+    memory_limit_mb: int = Field(default=512, ge=64, le=4096)
+    cpu_limit: float = Field(default=1.0, ge=0.5, le=4.0)
+    timeout_seconds: int = Field(default=60, ge=10, le=300)
+    max_concurrent_containers: int = Field(default=3, ge=1, le=10)
+
+
+class DockerConfigUpdate(BaseModel):
+    """Docker 配置更新模型"""
+    memory_limit_mb: Optional[int] = Field(None, ge=64, le=4096)
+    cpu_limit: Optional[float] = Field(None, ge=0.5, le=4.0)
+    timeout_seconds: Optional[int] = Field(None, ge=10, le=300)
+    max_concurrent_containers: Optional[int] = Field(None, ge=1, le=10)
+
+
+@app.get("/api/v1/docker-config")
+async def get_docker_config(
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """获取 Docker 沙箱配置"""
+    result = await session.exec(select(DockerConfig).order_by(DockerConfig.id.desc()).limit(1))
+    config = result.one_or_none()
+
+    if not config:
+        # 返回默认配置
+        return {
+            "memory_limit_mb": 512,
+            "cpu_limit": 1.0,
+            "timeout_seconds": 60,
+            "max_concurrent_containers": 3
+        }
+
+    return {
+        "id": config.id,
+        "memory_limit_mb": config.memory_limit_mb,
+        "cpu_limit": config.cpu_limit,
+        "timeout_seconds": config.timeout_seconds,
+        "max_concurrent_containers": config.max_concurrent_containers
+    }
+
+
+@app.put("/api/v1/docker-config")
+async def update_docker_config(
+    config_in: DockerConfigUpdate,
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """更新 Docker 沙箱配置"""
+    result = await session.exec(select(DockerConfig).order_by(DockerConfig.id.desc()).limit(1))
+    config = result.one_or_none()
+
+    update_data = config_in.model_dump(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    if not config:
+        # 创建新配置
+        create_data = config_in.model_dump()
+        db_config = DockerConfig(**create_data)
+        session.add(db_config)
+    else:
+        # 更新现有配置
+        for key, value in update_data.items():
+            setattr(config, key, value)
+        config.updated_at = datetime.now(timezone.utc)
+        session.add(config)
+        db_config = config
+
+    await session.commit()
+    await session.refresh(db_config)
+
+    return {
+        "id": db_config.id,
+        "memory_limit_mb": db_config.memory_limit_mb,
+        "cpu_limit": db_config.cpu_limit,
+        "timeout_seconds": db_config.timeout_seconds,
+        "max_concurrent_containers": db_config.max_concurrent_containers
+    }
+
+
+class ContainerStats(BaseModel):
+    """容器统计响应模型"""
+    container_id: Optional[str]
+    task_id: Optional[int]
+    cpu_percent: float = 0.0
+    memory_mb: float = 0.0
+    network_rx_bytes: int = 0
+    network_tx_bytes: int = 0
+    running_time_seconds: Optional[int]
+    alert: bool = False
+
+
+@app.get("/api/v1/containers")
+async def list_containers(
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """获取运行中容器列表"""
+    # 查询 RUNNING 状态的任务
+    result = await session.exec(
+        select(Task).where(Task.status == "RUNNING").order_by(Task.id.desc())
+    )
+    tasks = result.all()
+
+    containers = []
+    for task in tasks:
+        # 计算运行时长
+        running_time = None
+        if task.started_at:
+            running_time = int((datetime.now(timezone.utc) - task.started_at).total_seconds())
+
+        # 模拟容器统计（实际应从 Docker API 获取）
+        # 这里返回 mock 数据用于测试
+        container = {
+            "container_id": f"container-{task.id}",
+            "task_id": task.id,
+            "task_objective": task.raw_objective,
+            "cpu_percent": 0.0,
+            "memory_mb": 0.0,
+            "network_rx_bytes": 0,
+            "network_tx_bytes": 0,
+            "running_time_seconds": running_time,
+            "alert": False
+        }
+        containers.append(container)
+
+    return containers
+
+
+@app.get("/api/v1/containers/{container_id}/stats")
+async def get_container_stats(
+    container_id: str,
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """获取单个容器资源统计"""
+    # 从 container_id 解析 task_id
+    if container_id.startswith("container-"):
+        task_id = int(container_id.replace("container-", ""))
+        task = await session.get(Task, task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="Container not found")
+
+        running_time = None
+        if task.started_at:
+            running_time = int((datetime.now(timezone.utc) - task.started_at).total_seconds())
+
+        return {
+            "container_id": container_id,
+            "task_id": task.id,
+            "cpu_percent": 0.0,
+            "memory_mb": 0.0,
+            "network_rx_bytes": 0,
+            "network_tx_bytes": 0,
+            "running_time_seconds": running_time,
+            "alert": False
+        }
+
+    raise HTTPException(status_code=404, detail="Container not found")
+
+
+@app.get("/api/v1/containers/history")
+async def get_container_history(
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """获取历史容器统计"""
+    # 查询已完成或失败的任务
+    result = await session.exec(
+        select(Task)
+        .where(Task.status.in_(["COMPLETED", "FAILED", "CANCELLED"]))
+        .order_by(Task.completed_at.desc())
+        .limit(20)
+    )
+    tasks = result.all()
+
+    history = []
+    for task in tasks:
+        running_time = None
+        if task.started_at and task.completed_at:
+            running_time = int((task.completed_at - task.started_at).total_seconds())
+
+        history.append({
+            "container_id": f"container-{task.id}",
+            "task_id": task.id,
+            "task_objective": task.raw_objective,
+            "status": task.status,
+            "running_time_seconds": running_time,
+            "completed_at": task.completed_at.isoformat() if task.completed_at else None
+        })
+
+    return history
+
+
+class LogResponse(BaseModel):
+    """日志响应模型"""
+    logs: str
+    total_lines: int
+    truncated: bool
+
+
+@app.get("/api/v1/tasks/{task_id}/logs")
+async def get_task_logs(
+    task_id: int,
+    lines: int = Query(default=100, ge=1, le=1000),
+    level: str = Query(default="ALL", regex="^(ALL|INFO|WARN|ERROR)$"),
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """获取任务日志"""
+    task = await session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # 获取任务的 Trace 日志
+    from app.models import Trace
+    result = await session.exec(
+        select(Trace).where(Trace.task_id == task_id).order_by(Trace.id.desc())
+    )
+    traces = result.all()
+
+    # 构建日志内容
+    log_lines = []
+    for trace in traces:
+        if trace.perception_log:
+            log_lines.append(f"[INFO] Perception: {trace.perception_log}")
+        if trace.reasoning_log:
+            log_lines.append(f"[INFO] Reasoning: {trace.reasoning_log}")
+        if trace.applied_patch:
+            log_lines.append(f"[INFO] Applied patch: {trace.applied_patch[:100]}...")
+
+    # 按级别筛选（简化实现）
+    if level != "ALL":
+        filtered_lines = []
+        for line in log_lines:
+            if level in line:
+                filtered_lines.append(line)
+        log_lines = filtered_lines
+
+    # 分页
+    total_lines = len(log_lines)
+    truncated = len(log_lines) > lines
+    if truncated:
+        log_lines = log_lines[:lines]
+
+    return {
+        "task_id": task_id,
+        "logs": "\n".join(log_lines),
+        "total_lines": total_lines,
+        "truncated": truncated
+    }

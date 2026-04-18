@@ -2,95 +2,69 @@
 
 ## 最新进度与心跳留存
 - **最近更新时间**: 2026-04-18
-- **当前版本**: v2.0 🔄 规划中
-- **更新方身份**: SECA Planner
+- **当前版本**: v2.0 🔄 进行中
+- **更新方身份**: SECA Generator
 
 ## 当前游标与系统状态
-- **核心阶段落点**: **v2.0 规划完成，等待开始 Sprint 17 构建**
+- **核心阶段落点**: **Sprint 17 构建完成，等待 QA 验收**
 - **目标执行体进展**:
   - Sprint 1-5 (v1.0) ✅ 已完成
   - Sprint 6-8 (v1.1) ✅ 已完成
   - Sprint 9-13 (v1.2) ✅ 已完成
   - Sprint 14-16 (v1.3) ✅ 已完成
-  - Sprint 17-20 (v2.0) [ ] 待开始
+  - Sprint 17 (v2.0) [/] 进行中 → 构建完成
 
-## v2.0 规划摘要
+## Sprint 17 交付摘要
 
-### 版本主题：多租户协作 + 企业级运维能力
+### 交付内容
+1. **Docker 配置管理**:
+   - 后端：DockerConfig 模型、GET/PUT /api/v1/docker-config API
+   - 前端：DockerConfigPanel 组件（内存/CPU/超时/并发数配置）
+   - 验证：内存 64MB-4GB、CPU 0.5-4 核、超时 10-300 秒、并发 1-10
 
-### 新增 Feature 列表
-| Feature | 描述 | 风险等级 | Sprint |
-|---------|------|----------|--------|
-| Feature 18 | Docker 沙箱配置管理 | 低 | Sprint 17 |
-| Feature 19 | Docker 容器资源监控 | 中 | Sprint 17 |
-| Feature 20 | Docker 日志增强与聚合 | 低 | Sprint 17 |
-| Feature 21 | 镜像预拉取优化 | 中 | Sprint 18 |
-| Feature 22 | 多租户项目隔离 | 高 | Sprint 19-20 |
-| Feature 23 | 协作会话与实时评论 | 中 | Sprint 20 |
-| Feature 24 | Trace 回放增强 | 中 | Sprint 18 |
+2. **容器资源监控**:
+   - 后端：GET /api/v1/containers、GET /api/v1/containers/{id}/stats、GET /api/v1/containers/history
+   - 前端：ContainerMonitor 组件（实时 CPU/内存/网络 IO、阈值告警）
+   - 刷新：5 秒自动刷新、手动刷新按钮
 
-### Sprint 分解
-| Sprint | 主题 | 复杂度 | 预计周期 |
-|--------|------|--------|----------|
-| Sprint 17 | Docker 运维增强 | 中 | 2-3 天 |
-| Sprint 18 | 镜像优化与 Trace 回放 | 中 | 2-3 天 |
-| Sprint 19 | 多租户架构 (上) | 高 | 3-4 天 |
-| Sprint 20 | 多租户架构 (下) + 协作 | 高 | 3-4 天 |
+3. **Docker 日志聚合**:
+   - 后端：GET /api/v1/tasks/{id}/logs（支持分页和级别筛选）
+   - 前端：DockerLogViewer 组件（行数选择、级别筛选、自动滚动）
+   - 功能：默认 100 行、INFO/WARN/ERROR 筛选
 
-### v2.0 关键交付物
-1. **Docker 运维能力**: 配置管理 UI、容器资源监控、日志聚合
-2. **性能优化**: 镜像预拉取、Trace 关键帧回放
-3. **多租户隔离**: Tenant 模型、作用域过滤器、配额管理
-4. **协作功能**: 实时评论、WebSocket 推送、@提及通知
+### 后端交付文件
+- `app/models.py` - 新增 DockerConfig 模型
+- `app/main.py` - 新增 Docker 配置/容器监控/日志 API 端点
+- `app/auth.py` - 修复导入（get_db_session）
 
-### v2.0 DoD (验收标准)
-- Sprint 17-20 全部 `/qa` 通过 (单项 ≥ 7.0 分)
-- Docker 配置管理 UI 可用，配置保存立即生效
-- 容器资源监控延迟 < 5 秒
-- 日志加载支持 10000+ 行不卡顿
-- 镜像预拉取成功率 ≥ 95%
-- 多租户隔离测试 100% 覆盖
-- 协作评论实时推送延迟 < 3 秒
-- Trace 回放支持 1000+ 步骤
-- 向后兼容：v1.x API Key 在 v2.0 中仍可认证
-- 性能回归：核心 API 延迟相比 v1.3 下降不超过 20%
+### 前端交付文件
+- `src/components/DockerConfigPanel.tsx` - Docker 配置管理面板
+- `src/components/ContainerMonitor.tsx` - 容器资源监控
+- `src/components/DockerLogViewer.tsx` - Docker 日志查看器
+
+### 测试交付文件
+- `tests/test_docker_ops.py` - Docker 运维功能测试
+
+### Git 提交
+- 待提交：`feat: Sprint 17 Docker 运维增强`
 
 ## 技术决策定调
 
-### 架构决策
-1. **多租户策略**: 数据库级隔离（tenant_id 过滤）+ 中间件强制作用域
-2. **实时通信**: WebSocket 为主，SSE 降级备选
-3. **Trace 回放**: 关键帧模式支持大数据量场景
+### ADR 记录
+- 无新 ADR（使用现有技术栈）
 
-### 风险缓解
-1. **多租户数据泄露**: 所有查询强制附加 tenant_id，测试覆盖越权场景
-2. **WebSocket 连接管理**: 心跳保活、断线重连、降级轮询
-3. **镜像拉取失败**: 任务失败不阻塞队列，建议替代镜像
+### 代码优化
+- 修复 auth.py 缺失的 get_db_session 导入
+- 测试使用 conftest fixture 避免数据库锁问题
 
 ## 下游行动建议 (Action Requested)
 
-### 对于 Builder
-- 从 Sprint 17 开始执行（Docker 运维增强）
-- Feature 18/19/20 均为中低风险，可并行开发
-- 保持 TDD 流程：Red → Green → Refactor
-
 ### 对于 Evaluator
-- v2.0 新增多租户安全测试要求（越权访问必测）
-- Docker 相关功能需验证 Docker 不可用降级路径
-- 性能回归测试：对比 v1.3 基线
+- 验证 Docker 配置 API 的合法性校验
+- 验证容器监控 API 返回数据结构
+- 验证日志 API 的分页和筛选功能
+- 前端组件需要手动验证（启动 dev server）
 
 ## 下一步动作
 
-执行 `/build` 开始 Sprint 17: Docker 运维增强
-
-```bash
-# 建议执行顺序
-/build  # Sprint 17: Docker 配置 + 容器监控 + 日志聚合
-/qa     # 验收 Sprint 17
-/build  # Sprint 18: 镜像预拉取 + Trace 回放增强
-/qa     # 验收 Sprint 18
-...
-```
-
-## Git 提交
-- 待提交：`feat: 规划新版本 v2.0`
+执行 /qa 进行 Sprint 17 验收

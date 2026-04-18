@@ -89,3 +89,16 @@ class AuditLog(SQLModel, table=True):
     user_agent: Optional[str] = None  # Sprint 11: User-Agent
     duration_ms: Optional[int] = None  # Sprint 11: 操作耗时（毫秒）
     details: Optional[Dict[str, str]] = Field(default_factory=dict, sa_type=sa.JSON)
+
+
+class DockerConfig(SQLModel, table=True):
+    """Sprint 17: Docker 沙箱配置模型"""
+    __tablename__ = "docker_config"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    memory_limit_mb: int = Field(default=512, ge=64, le=4096)  # 内存限制 64MB-4GB
+    cpu_limit: float = Field(default=1.0, ge=0.5, le=4.0)  # CPU 限制 0.5-4 核
+    timeout_seconds: int = Field(default=60, ge=10, le=300)  # 超时 10-300 秒
+    max_concurrent_containers: int = Field(default=3, ge=1, le=10)  # 最大并发容器数
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

@@ -6,6 +6,7 @@ import secrets
 from datetime import datetime, timezone
 from app.models import APIKey
 from sqlmodel.ext.asyncio.session import AsyncSession
+from app.database import get_db_session
 
 
 # bcrypt rounds 配置（平衡安全性和性能）
@@ -85,13 +86,6 @@ def require_api_key(permission: str = "write"):
         return db_key
 
     return api_key_dependency
-
-
-async def get_db_session():
-    """获取数据库会话"""
-    from app.database import get_db_session
-    async for session in get_db_session():
-        yield session
 
 
 # 预定义的依赖函数
