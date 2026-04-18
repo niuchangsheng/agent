@@ -5,6 +5,7 @@ import ConfigPanel from './components/ConfigPanel';
 import TaskQueueDashboard from './components/TaskQueueDashboard';
 import ApiKeyManager from './components/ApiKeyManager';
 import MetricsDashboard from './components/MetricsDashboard';
+import TaskSubmitPanel from './components/TaskSubmitPanel';
 
 interface Task {
   id: number;
@@ -17,7 +18,7 @@ function App() {
   const [status, setStatus] = useState<string>('Detecting...');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'queue' | 'config' | 'auth' | 'metrics'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'submit' | 'dashboard' | 'queue' | 'config' | 'auth' | 'metrics'>('submit');
 
   useEffect(() => {
     fetch('/api/v1/health')
@@ -78,6 +79,16 @@ function App() {
       {/* 标签页切换 */}
       <div className="w-full max-w-6xl mb-4 flex gap-2">
         <button
+          onClick={() => setActiveTab('submit')}
+          className={`px-4 py-2 rounded font-medium transition-colors ${
+            activeTab === 'submit'
+              ? 'bg-cyan-600 text-white'
+              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+          }`}
+        >
+          提交任务
+        </button>
+        <button
           onClick={() => setActiveTab('dashboard')}
           className={`px-4 py-2 rounded font-medium transition-colors ${
             activeTab === 'dashboard'
@@ -129,26 +140,37 @@ function App() {
         </button>
       </div>
 
-      {selectedTaskId ? (
-        <div className="w-full max-w-6xl">
-          {activeTab === 'dashboard' ? (
+      {/* 内容区域 */}
+      <div className="w-full max-w-6xl">
+        {activeTab === 'submit' ? (
+          <div className="w-full max-w-md">
+            <TaskSubmitPanel
+              onTaskCreated={(task) => {
+                setTasks(prev => [...prev, task]);
+                setSelectedTaskId(task.id);
+                setActiveTab('queue');
+              }}
+            />
+          </div>
+        ) : activeTab === 'queue' ? (
+          <TaskQueueDashboard />
+        ) : activeTab === 'auth' ? (
+          <ApiKeyManager />
+        ) : activeTab === 'metrics' ? (
+          <MetricsDashboard />
+        ) : selectedTaskId ? (
+          activeTab === 'dashboard' ? (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <Dashboard taskId={selectedTaskId.toString()} />
               <PlaybackTree taskId={selectedTaskId.toString()} />
             </div>
-          ) : activeTab === 'queue' ? (
-            <TaskQueueDashboard />
           ) : activeTab === 'config' ? (
             <ConfigPanel projectId={tasks.find(t => t.id === selectedTaskId)?.project_id || 0} />
-          ) : activeTab === 'auth' ? (
-            <ApiKeyManager />
-          ) : activeTab === 'metrics' ? (
-            <MetricsDashboard />
-          ) : null}
-        </div>
-      ) : (
-        <div className="text-slate-500">No tasks available. Create a task to begin.</div>
-      )}
+          ) : null
+        ) : (
+          <div className="text-slate-500">请先提交任务以使用此功能。</div>
+        )}
+      </div>
     </div>
   );
 }
