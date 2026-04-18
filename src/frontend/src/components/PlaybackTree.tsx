@@ -55,7 +55,12 @@ const PlaybackTree: React.FC<{ taskId: string }> = ({ taskId }) => {
 
   useEffect(() => {
     if (!loading && nodes.length > 0) {
-      mermaid.contentLoaded();
+      // 使用 mermaid.run() 替代已弃用的 contentLoaded()
+      // 确保在 DOM 更新后执行渲染
+      const timer = setTimeout(() => {
+        mermaid.run();
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [loading, nodes]);
 
