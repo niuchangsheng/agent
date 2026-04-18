@@ -1,19 +1,12 @@
-# Sprint 17 验收合同（修复版）：Docker 运维增强
+# Sprint 17.5 验收合同：任务提交界面
 
 ## 合同签署方
-- **需求方**: product_spec.md Feature 18, 19, 20 (Sprint 17)
+- **需求方**: product_spec.md Sprint 17.5 (Feature 0 P0 核心入口补齐)
 - **执行方**: Generator (TDD 工程师)
 - **验收方**: Evaluator (QA 评审官)
 
-## QA 打回原因（来自 QA 评审报告）
-
-| 问题 | 状态 | 修复计划 |
-|------|------|----------|
-| 前端 TypeScript 编译失败 | ✅ 已修复 | npx tsc --noEmit 无错误输出 |
-| 测试数据库锁问题 | ❌ 未修复 | 需验证测试执行情况 |
-| UI 组件无 Vitest 测试 | ❌ 待修复 | 需编写 3 个组件测试 |
-| 边界测试缺失 | ❌ 待修复 | 补充边界条件测试 |
-| 后端测试期望值错误 | ❌ 待修复 | 400 → 422（FastAPI 标准） |
+## 功能概述
+实现 TaskSubmitPanel 组件，作为 SECA 系统的核心入口，让用户能够通过 Web 界面提交新任务。
 
 ---
 
@@ -21,83 +14,77 @@
 
 ### P0 必修项
 
-#### 前端单元测试 (`src/frontend/tests/`)
+#### 前端单元测试 (`src/frontend/tests/TaskSubmitPanel.test.tsx`) - 8 tests
 
-**DockerConfigPanel.test.tsx** (8 tests):
-- [ ] `renders loading state initially` - 渲染初始加载状态
-- [ ] `displays config from API` - 显示 API 返回的配置
-- [ ] `validates memory limit range` - 内存范围验证提示
-- [ ] `validates cpu limit range` - CPU 范围验证提示
-- [ ] `validates timeout range` - 超时范围验证提示
-- [ ] `saves config successfully` - 成功保存配置
-- [ ] `handles API error gracefully` - API 错误处理
-- [ ] `sends API key in headers` - 请求携带 API Key
+| 测试项 | 验收标准 | 状态 |
+|--------|----------|------|
+| `renders all form elements` | 渲染项目选择器、目标输入框、优先级选择器、提交按钮 | [ ] |
+| `displays projects from API` | 项目选择器显示 API 返回的项目列表 | [ ] |
+| `validates required fields` | 空目标输入时显示错误提示 | [ ] |
+| `validates objective length` | 目标 > 500 字符时显示长度警告 | [ ] |
+| `submits task successfully` | 提交成功后调用 onTaskCreated callback | [ ] |
+| `handles API error gracefully` | API 错误时显示错误消息 | [ ] |
+| `sends API key in headers` | 请求携带 X-API-Key header | [ ] |
+| `disables submit when no API key` | 无 API Key 时禁用提交按钮并显示提示 | [ ] |
 
-**ContainerMonitor.test.tsx** (8 tests):
-- [ ] `renders empty state when no containers` - 无容器时空状态
-- [ ] `displays container stats from API` - 显示容器统计
-- [ ] `shows CPU warning style for high usage` - CPU 高使用警告样式
-- [ ] `shows memory warning style for high usage` - 内存高使用警告样式
-- [ ] `formats bytes correctly` - 字节格式化正确
-- [ ] `formats duration correctly` - 时长格式化正确
-- [ ] `auto-refreshes on interval` - 定时自动刷新
-- [ ] `handles missing API key gracefully` - 缺失 API Key 处理
+#### 边界测试覆盖
 
-**DockerLogViewer.test.tsx** (8 tests):
-- [ ] `renders loading state initially` - 渲染初始加载状态
-- [ ] `displays logs from API` - 显示 API 返回的日志
-- [ ] `filters by level INFO` - INFO 级别筛选
-- [ ] `filters by level ERROR` - ERROR 级别筛选
-- [ ] `changes lines count` - 行数选择功能
-- [ ] `shows truncated indicator` - 截断指示器
-- [ ] `applies level color coding` - 级别颜色编码
-- [ ] `handles missing API key gracefully` - 缺失 API Key 处理
-
-#### 后端单元测试修复 (`src/backend/tests/test_docker_ops.py`)
-
-- [ ] `test_docker_config_get` - ✅ 已通过
-- [ ] `test_docker_config_update` - ✅ 已通过
-- [ ] `test_docker_config_validation_rejects_low_memory` - ❌ 修复期望值 400 → 422
-- [ ] `test_docker_config_validation_rejects_high_memory` - ❌ 修复期望值 400 → 422
-- [ ] `test_container_monitor_get_stats` - ✅ 已通过
-- [ ] `test_container_history` - ✅ 已通过
-- [ ] `test_docker_logger_get_logs` - ✅ 已通过
-
-#### 补充边界测试
-
-**后端边界测试** (新增):
-- [ ] `test_docker_config_validation_rejects_low_cpu` - CPU < 0.5 拒绝
-- [ ] `test_docker_config_validation_rejects_high_cpu` - CPU > 4 拒绝
-- [ ] `test_docker_config_validation_rejects_low_timeout` - timeout < 10 拒绝
-- [ ] `test_docker_config_validation_rejects_high_timeout` - timeout > 300 拒绝
-- [ ] `test_docker_config_validation_rejects_low_containers` - containers < 1 拒绝
-- [ ] `test_docker_config_validation_rejects_high_containers` - containers > 10 拒绝
+| 边界场景 | 验收标准 | 状态 |
+|----------|----------|------|
+| 空项目列表 | 显示"请先创建项目"提示 | [ ] |
+| 目标长度超限 | 显示警告但不阻止提交 | [ ] |
+| 优先级范围 | 默认 0，可选 0-10 | [ ] |
+| 提交按钮状态 | 无 API Key / 无项目时禁用 | [ ] |
+| 双击提交防抖 | 提交过程中按钮禁用 | [ ] |
 
 ---
 
-## 测试执行证据要求
+## UI 设计规范
 
-### 前端测试结果
-```bash
-$ cd src/frontend && npm test
- Test Files  12+ passed (12+)
-      Tests  69+ passed (69+)
-```
+### Glassmorphism 风格一致性
+- 容器: `backdrop-blur-md bg-slate-900/50 border-cyan-500/30 rounded-xl shadow-2xl`
+- 输入框: `bg-slate-800/50 border-slate-700 rounded-lg`
+- 按钮: `bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-700`
+- 错误提示: `bg-red-900/30 border-red-500/50 text-red-300`
 
-### 后端测试结果
-```bash
-$ cd src/backend && source venv/bin/activate && python -m pytest tests/test_docker_ops.py -v
-======================== 13+ passed ========================
+### 响应式布局
+- 项目选择器: 宽度 100%
+- 目标输入框: textarea 最小高度 100px
+- 优先级选择器: 使用 PrioritySelector 组件复用
+
+---
+
+## 技术实现要求
+
+### API 集成
+- **GET /api/v1/projects**: 获取项目列表
+- **POST /api/v1/tasks**: 提交新任务
+  - 请求体: `{ project_id: number, raw_objective: string, priority?: number }`
+
+### 状态管理
+- `projects`: 项目列表数组
+- `selectedProjectId`: 当前选中项目 ID
+- `objective`: 目标输入文本
+- `priority`: 优先级值 (0-10)
+- `loading`: 提交中状态
+- `error`: 错误消息
+
+### 组件 Props
+```typescript
+interface TaskSubmitPanelProps {
+  onTaskCreated?: (task: Task) => void;  // 提交成功回调
+}
 ```
 
 ---
 
 ## 完成定义
 
-- [ ] 所有前端测试用例编写完成并通过 (24 tests)
-- [ ] 所有后端测试修复并通过 (13 tests)
-- [ ] 边界测试覆盖全部字段范围验证
-- [ ] 回归测试：不破坏 Sprint 1-16 的功能
+- [ ] 所有前端测试用例编写完成并通过 (8 tests)
+- [ ] Glassmorphism 风格与其他组件一致
+- [ ] 表单验证逻辑完整
+- [ ] API Key 状态检测正常
+- [ ] 回归测试：不破坏 Sprint 1-17 的功能
 - [ ] TypeScript 编译无错误
 - [ ] handoff.md 更新完成
 
@@ -105,17 +92,17 @@ $ cd src/backend && source venv/bin/activate && python -m pytest tests/test_dock
 
 ## 技术备注
 
-### FastAPI 验证响应码说明
-- FastAPI 的 Pydantic 验证失败默认返回 **422 Unprocessable Entity**
-- 测试期望 400 是错误理解，应修正为 422
-- 参考：https://fastapi.tiangolo.com/tutorial/handling-errors/
+### 复用现有组件
+- **PrioritySelector**: Sprint 15 已实现，直接复用
+- **API Key 获取**: 使用 `localStorage.getItem('api_key')`
 
-### 前端组件 Glassmorphism 风格一致性
-- DockerConfigPanel: `backdrop-blur-md bg-slate-900/50 border-cyan-500/30`
-- ContainerMonitor: `backdrop-blur-md bg-slate-900/50 border-cyan-500/30`
-- DockerLogViewer: `backdrop-blur-md bg-slate-900/50 border-purple-500/30`
+### 用户旅程闭环
+提交成功后应:
+1. 清空表单
+2. 触发 onTaskCreated callback
+3. 可跳转到 TaskQueueDashboard 查看队列状态
 
 ---
 
 **签署时间**: 2026-04-18
-**Generator 签名**: Sprint 17 修复开发启动
+**Generator 签名**: Sprint 17.5 开发启动

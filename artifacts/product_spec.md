@@ -212,7 +212,7 @@
 ### v2.0 (进行中)
 
 **Sprint 17.5: 任务提交界面 — 实现 Feature 0 (P0 核心入口补齐)**
-- [ ] TaskSubmitPanel 组件设计（项目选择器、目标输入框、优先级选择器）
+- [/] TaskSubmitPanel 组件设计（项目选择器、目标输入框、优先级选择器）— 正在开发
 - [ ] 表单验证逻辑（必填字段检查、API Key 状态检测）
 - [ ] 提交成功后自动跳转 Task Queue 面板
 - [ ] Glassmorphism 风格一致性
