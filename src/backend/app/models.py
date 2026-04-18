@@ -102,3 +102,15 @@ class DockerConfig(SQLModel, table=True):
     max_concurrent_containers: int = Field(default=3, ge=1, le=10)  # 最大并发容器数
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ImageConfig(SQLModel, table=True):
+    """Sprint 18 Feature 21: 镜像预拉取配置模型"""
+    __tablename__ = "image_config"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str  # 镜像名称，如 "alpine:3.18"
+    status: str = Field(default="missing")  # ready, pulling, missing, failed
+    last_pull_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

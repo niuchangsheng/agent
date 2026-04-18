@@ -1,90 +1,93 @@
-# Sprint 17.5 验收合同：任务提交界面
+# Sprint 18 验收合同：镜像优化与 Trace 回放
 
 ## 合同签署方
-- **需求方**: product_spec.md Sprint 17.5 (Feature 0 P0 核心入口补齐)
+- **需求方**: product_spec.md Feature 21, Feature 24 (Sprint 18)
 - **执行方**: Generator (TDD 工程师)
 - **验收方**: Evaluator (QA 评审官)
 
 ## 功能概述
-实现 TaskSubmitPanel 组件，作为 SECA 系统的核心入口，让用户能够通过 Web 界面提交新任务。
+本 Sprint 包含两个独立 Feature：
+1. **Feature 21**: 镜像预拉取优化 - 后端调度器 + API
+2. **Feature 24**: Trace 回放增强 - 前端播放器组件
 
 ---
 
-## 验收测试清单
+## Part A: Feature 21 - 镜像预拉取优化
 
-### P0 必修项
-
-#### 前端单元测试 (`src/frontend/tests/TaskSubmitPanel.test.tsx`) - 8 tests
+### 后端单元测试 (`src/backend/tests/test_image_prepull.py`) - 6 tests
 
 | 测试项 | 验收标准 | 状态 |
 |--------|----------|------|
-| `renders all form elements` | 渲染项目选择器、目标输入框、优先级选择器、提交按钮 | [ ] |
-| `displays projects from API` | 项目选择器显示 API 返回的项目列表 | [ ] |
-| `validates required fields` | 空目标输入时显示错误提示 | [ ] |
-| `validates objective length` | 目标 > 500 字符时显示长度警告 | [ ] |
-| `submits task successfully` | 提交成功后调用 onTaskCreated callback | [ ] |
-| `handles API error gracefully` | API 错误时显示错误消息 | [ ] |
-| `sends API key in headers` | 请求携带 X-API-Key header | [ ] |
-| `disables submit when no API key` | 无 API Key 时禁用提交按钮并显示提示 | [ ] |
+| `test_image_config_get` | GET /api/v1/images 返回预配置镜像列表 | [ ] |
+| `test_image_config_add` | POST /api/v1/images 添加新镜像配置 | [ ] |
+| `test_image_status_check` | 检查镜像本地状态（ready/pulling/missing） | [ ] |
+| `test_image_prepull_trigger` | 手动触发镜像预拉取 | [ ] |
+| `test_image_wait_queue` | 镜像未就绪时任务进入等待队列 | [ ] |
+| `test_image_unavailable_error` | 镜像不可用时返回错误 | [ ] |
 
-#### 边界测试覆盖
+### API 端点设计
 
-| 边界场景 | 验收标准 | 状态 |
-|----------|----------|------|
-| 空项目列表 | 显示"请先创建项目"提示 | [ ] |
-| 目标长度超限 | 显示警告但不阻止提交 | [ ] |
-| 优先级范围 | 默认 0，可选 0-10 | [ ] |
-| 提交按钮状态 | 无 API Key / 无项目时禁用 | [ ] |
-| 双击提交防抖 | 提交过程中按钮禁用 | [ ] |
+| 端点 | 方法 | 功能 |
+|------|------|------|
+| `/api/v1/images` | GET | 获取镜像配置列表及状态 |
+| `/api/v1/images` | POST | 添加镜像配置 |
+| `/api/v1/images/{name}/pull` | POST | 触发镜像拉取 |
+| `/api/v1/images/{name}/status` | GET | 获取镜像状态 |
 
----
+### 数据模型
 
-## UI 设计规范
-
-### Glassmorphism 风格一致性
-- 容器: `backdrop-blur-md bg-slate-900/50 border-cyan-500/30 rounded-xl shadow-2xl`
-- 输入框: `bg-slate-800/50 border-slate-700 rounded-lg`
-- 按钮: `bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-700`
-- 错误提示: `bg-red-900/30 border-red-500/50 text-red-300`
-
-### 响应式布局
-- 项目选择器: 宽度 100%
-- 目标输入框: textarea 最小高度 100px
-- 优先级选择器: 使用 PrioritySelector 组件复用
+```python
+class ImageConfig(SQLModel, table=True):
+    id: int
+    name: str  # 如 "alpine:3.18"
+    status: str  # "ready", "pulling", "missing", "failed"
+    last_pull_at: datetime
+    created_at: datetime
+```
 
 ---
 
-## 技术实现要求
+## Part B: Feature 24 - Trace 回放增强
 
-### API 集成
-- **GET /api/v1/projects**: 获取项目列表
-- **POST /api/v1/tasks**: 提交新任务
-  - 请求体: `{ project_id: number, raw_objective: string, priority?: number }`
+### 前端单元测试 (`src/frontend/tests/TracePlayback.test.tsx`) - 8 tests
 
-### 状态管理
-- `projects`: 项目列表数组
-- `selectedProjectId`: 当前选中项目 ID
-- `objective`: 目标输入文本
-- `priority`: 优先级值 (0-10)
-- `loading`: 提交中状态
-- `error`: 错误消息
+| 测试项 | 验收标准 | 状态 |
+|--------|----------|------|
+| `renders playback controls` | 显示播放/暂停、时间轴、倍速选择器 | [ ] |
+| `displays trace steps from API` | 显示 Trace 步骤列表 | [ ] |
+| `play_pause_toggle_works` | 点击播放/暂停切换状态 | [ ] |
+| `speed_selector_changes_speed` | 倍速选择器切换 0.5x/1x/2x/5x | [ ] |
+| `timeline_slider_navigation` | 时间轴滑块导航到指定步骤 | [ ] |
+| `current_step_highlighted` | 当前步骤高亮显示 | [ ] |
+| `handles empty_trace` | 无 Trace 时显示空状态 | [ ] |
+| `sends API key in headers` | 请求携带 API Key | [ ] |
 
 ### 组件 Props
+
 ```typescript
-interface TaskSubmitPanelProps {
-  onTaskCreated?: (task: Task) => void;  // 提交成功回调
+interface TracePlaybackProps {
+  taskId: number;
+  autoPlay?: boolean;
+  defaultSpeed?: number;  // 0.5, 1, 2, 5
 }
 ```
+
+### UI 设计规范
+
+- 时间轴: 滑块控件，显示总步数和当前位置
+- 倍速选择器: 下拉菜单 0.5x/1x/2x/5x
+- 播放/暂停按钮: 图标按钮
+- 步骤列表: 垂直滚动列表，当前步骤高亮（bg-cyan-500/20）
+- Glassmorphism 风格: `backdrop-blur-md bg-slate-900/50 border-cyan-500/30`
 
 ---
 
 ## 完成定义
 
-- [ ] 所有前端测试用例编写完成并通过 (8 tests)
+- [ ] Feature 21 后端测试全部通过 (6 tests)
+- [ ] Feature 24 前端测试全部通过 (8 tests)
 - [ ] Glassmorphism 风格与其他组件一致
-- [ ] 表单验证逻辑完整
-- [ ] API Key 状态检测正常
-- [ ] 回归测试：不破坏 Sprint 1-17 的功能
+- [ ] 回归测试：不破坏 Sprint 1-17.5 的功能
 - [ ] TypeScript 编译无错误
 - [ ] handoff.md 更新完成
 
@@ -92,17 +95,17 @@ interface TaskSubmitPanelProps {
 
 ## 技术备注
 
-### 复用现有组件
-- **PrioritySelector**: Sprint 15 已实现，直接复用
-- **API Key 获取**: 使用 `localStorage.getItem('api_key')`
+### Feature 21 实现要点
+- 镜像预拉取使用后台任务异步执行
+- 状态检测使用 Docker SDK (`docker.images.get()`)
+- 拉取失败时记录错误日志，不影响其他镜像
 
-### 用户旅程闭环
-提交成功后应:
-1. 清空表单
-2. 触发 onTaskCreated callback
-3. 可跳转到 TaskQueueDashboard 查看队列状态
+### Feature 24 实现要点
+- 复用现有 `/api/v1/tasks/{id}/dag-tree` API
+- 添加 `/api/v1/tasks/{id}/traces` 获取完整 Trace 列表
+- 时间轴基于步骤索引，支持跳跃导航
 
 ---
 
-**签署时间**: 2026-04-18
-**Generator 签名**: Sprint 17.5 开发启动
+**签署时间**: 2026-04-19
+**Generator 签名**: Sprint 18 开发启动

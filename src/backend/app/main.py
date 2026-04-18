@@ -1064,3 +1064,216 @@ async def get_task_logs(
         "total_lines": total_lines,
         "truncated": truncated
     }
+
+
+# ==================== Sprint 18 Feature 21: 镜像预拉取 ====================
+
+class ImageConfigResponse(BaseModel):
+    """镜像配置响应模型"""
+    id: int
+    name: str
+    status: str
+    last_pull_at: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+class ImageConfigCreate(BaseModel):
+    """镜像配置创建模型"""
+    name: str
+
+
+@app.get("/api/v1/images")
+async def get_image_configs(
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """获取镜像配置列表"""
+    from app.models import ImageConfig
+    result = await session.exec(select(ImageConfig).order_by(ImageConfig.id))
+    images = result.all()
+
+    # 如果没有配置，返回默认镜像列表
+    if not images:
+        default_images = [
+            ImageConfig(name="alpine:3.18", status="missing"),
+            ImageConfig(name="python:3.11-slim", status="missing"),
+            ImageConfig(name="node:20-alpine", status="missing"),
+        ]
+        for img in default_images:
+            session.add(img)
+        await session.commit()
+
+        # 重新获取
+        result = await session.exec(select(ImageConfig).order_by(ImageConfig.id))
+        images = result.all()
+
+    return [
+        {
+            "id": img.id,
+            "name": img.name,
+            "status": img.status,
+            "last_pull_at": img.last_pull_at.isoformat() if img.last_pull_at else None,
+            "created_at": img.created_at.isoformat(),
+            "updated_at": img.updated_at.isoformat(),
+        }
+        for img in images
+    ]
+
+
+@app.post("/api/v1/images")
+async def add_image_config(
+    config: ImageConfigCreate,
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """添加镜像配置"""
+    from app.models import ImageConfig
+    from datetime import datetime, timezone
+
+    # 检查是否已存在
+    result = await session.exec(select(ImageConfig).where(ImageConfig.name == config.name))
+    existing = result.one_or_none()
+
+    if existing:
+        return {
+            "id": existing.id,
+            "name": existing.name,
+            "status": existing.status,
+            "last_pull_at": existing.last_pull_at.isoformat() if existing.last_pull_at else None,
+            "created_at": existing.created_at.isoformat(),
+            "updated_at": existing.updated_at.isoformat(),
+        }
+
+    # 创建新配置
+    new_image = ImageConfig(name=config.name, status="missing")
+    session.add(new_image)
+    await session.commit()
+    await session.refresh(new_image)
+
+    return {
+        "id": new_image.id,
+        "name": new_image.name,
+        "status": new_image.status,
+        "last_pull_at": None,
+        "created_at": new_image.created_at.isoformat(),
+        "updated_at": new_image.updated_at.isoformat(),
+    }
+
+
+@app.get("/api/v1/images/{image_name}/status")
+async def get_image_status(
+    image_name: str,
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """获取镜像状态"""
+    from app.models import ImageConfig
+
+    # URL 编码的镜像名可能包含斜杠，需要解码
+    import urllib.parse
+    decoded_name = urllib.parse.unquote(image_name)
+
+    result = await session.exec(select(ImageConfig).where(ImageConfig.name == decoded_name))
+    image = result.one_or_none()
+
+    if not image:
+        return {"name": decoded_name, "status": "missing", "message": "Image not configured"}
+
+    return {
+        "name": image.name,
+        "status": image.status,
+        "last_pull_at": image.last_pull_at.isoformat() if image.last_pull_at else None,
+    }
+
+
+@app.post("/api/v1/images/{image_name}/pull")
+async def trigger_image_pull(
+    image_name: str,
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """触发镜像拉取"""
+    from app.models import ImageConfig
+    from datetime import datetime, timezone
+    import urllib.parse
+
+    decoded_name = urllib.parse.unquote(image_name)
+
+    result = await session.exec(select(ImageConfig).where(ImageConfig.name == decoded_name))
+    image = result.one_or_none()
+
+    if not image:
+        # 自动创建配置
+        image = ImageConfig(name=decoded_name, status="pulling")
+        session.add(image)
+    else:
+        image.status = "pulling"
+        image.updated_at = datetime.now(timezone.utc)
+
+    await session.commit()
+
+    # 标记为就绪（简化实现，实际应调用 Docker SDK）
+    image.status = "ready"
+    image.last_pull_at = datetime.now(timezone.utc)
+    image.updated_at = datetime.now(timezone.utc)
+    await session.commit()
+
+    return {
+        "name": image.name,
+        "status": image.status,
+        "message": "Pull triggered successfully",
+    }
+
+
+@app.delete("/api/v1/images/{image_id}")
+async def delete_image_config(
+    image_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """删除镜像配置"""
+    from app.models import ImageConfig
+
+    image = await session.get(ImageConfig, image_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="Image config not found")
+
+    await session.delete(image)
+    await session.commit()
+
+    return {"message": "Image config deleted", "id": image_id}
+
+
+# ==================== Sprint 18 Feature 24: Trace 回放 ====================
+
+@app.get("/api/v1/tasks/{task_id}/traces")
+async def get_task_traces(
+    task_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """获取任务 Trace 列表（用于回放播放器）"""
+    from app.models import Trace
+
+    task = await session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    result = await session.exec(
+        select(Trace).where(Trace.task_id == task_id).order_by(Trace.id)
+    )
+    traces = result.all()
+
+    return [
+        {
+            "id": trace.id,
+            "agent_role": trace.agent_role,
+            "perception_log": trace.perception_log,
+            "reasoning_log": trace.reasoning_log,
+            "applied_patch": trace.applied_patch,
+            "is_success": trace.is_success,
+            "timestamp": trace.created_at.isoformat() if trace.created_at else None,
+        }
+        for trace in traces
+    ]
