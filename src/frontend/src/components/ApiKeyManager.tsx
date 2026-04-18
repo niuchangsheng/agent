@@ -32,7 +32,7 @@ export default function ApiKeyManager() {
   const [newKeyName, setNewKeyName] = useState('');
   const [newKeyPermissions, setNewKeyPermissions] = useState({
     read: true,
-    write: false,
+    write: true,  // 默认开启 write 权限，以便创建项目
     admin: false
   });
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);

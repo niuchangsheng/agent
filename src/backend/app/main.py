@@ -7,6 +7,7 @@ from fastapi import FastAPI, Depends, Request, Header, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi import HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from sqlmodel import SQLModel, select
 from datetime import datetime, timezone, timedelta
@@ -14,10 +15,11 @@ from pydantic import BaseModel, Field
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.database import engine, get_db_session
-from app.models import Project, Task, ProjectConfig, APIKey, AuditLog, DockerConfig
+from app.models import Project, Task, ProjectConfig, APIKey, AuditLog, DockerConfig, Tenant
 from app.auth import require_write_key, require_read_key, generate_api_key, hash_api_key
 from app.eta import update_task_eta, get_eta_calculator
 from app.metrics import MetricsCollector, check_thresholds
+from app.tenant import init_default_tenant, get_quota_usage, check_quota_limit
 # Sprint 9: 导入新队列模块
 from app.queue import create_queue, BaseQueue
 
@@ -67,6 +69,7 @@ class ProjectCreate(BaseModel):
 class TaskCreate(BaseModel):
     project_id: int
     raw_objective: str
+    priority: int = 0
 
 class ProjectConfigCreate(BaseModel):
     sandbox_timeout_seconds: int = Field(ge=1, le=60, default=30)
@@ -94,6 +97,7 @@ class APIKeyCreate(BaseModel):
     name: str
     permissions: List[str] = Field(default_factory=list)
     expires_at: Optional[datetime] = None
+    tenant_id: Optional[int] = Field(default=None)  # Sprint 19: 租户绑定
 
 class APIKeyResponse(BaseModel):
     id: int
@@ -109,6 +113,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
+
+    # Sprint 19: 初始化默认租户
+    async with AsyncSession(engine) as session:
+        await init_default_tenant(session)
 
     # Sprint 9: 初始化队列（支持 Redis 降级）
     redis_url = os.getenv("REDIS_URL")
@@ -140,6 +148,31 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await engine.dispose()
 
 app = FastAPI(title="SECA API", lifespan=lifespan)
+
+# CORS 配置 - 允许前端跨域访问
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 全局异常处理器 - 确保所有错误返回 JSON
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal Server Error: {str(exc)}"}
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()}
+    )
 
 # Audit Log Middleware - captures IP, User-Agent, duration for write operations
 @app.middleware("http")
@@ -236,11 +269,19 @@ async def create_task(
     session: AsyncSession = Depends(get_db_session),
     api_key: APIKey = Depends(require_write_key)
 ):
-    """创建任务 - 需要写权限"""
-    db_task = Task(project_id=task_in.project_id, raw_objective=task_in.raw_objective)
+    """创建任务 - 需要写权限，自动加入队列"""
+    db_task = Task(project_id=task_in.project_id, raw_objective=task_in.raw_objective, priority=task_in.priority)
     session.add(db_task)
     await session.commit()
     await session.refresh(db_task)
+
+    # 自动加入队列
+    if global_queue:
+        try:
+            await global_queue.enqueue(db_task.id, task_in.project_id, task_in.raw_objective, task_in.priority)
+        except Exception as e:
+            logger.warning(f"Failed to enqueue task {db_task.id}: {e}")
+
     return db_task
 
 @app.get("/api/v1/tasks/{task_id}/stream")
@@ -643,11 +684,21 @@ async def create_api_key(
     raw_key = generate_api_key()
     key_hash = hash_api_key(raw_key)
 
+    # Sprint 19: 处理租户绑定
+    tenant_id = key_in.tenant_id
+    if tenant_id is None:
+        # 自动绑定默认租户
+        result = await session.exec(select(Tenant).where(Tenant.slug == "default"))
+        default_tenant = result.one_or_none()
+        if default_tenant:
+            tenant_id = default_tenant.id
+
     db_key = APIKey(
         name=key_in.name,
         key_hash=key_hash,
         permissions=key_in.permissions,
-        expires_at=key_in.expires_at
+        expires_at=key_in.expires_at,
+        tenant_id=tenant_id
     )
     session.add(db_key)
     await session.commit()
@@ -658,6 +709,7 @@ async def create_api_key(
         "key": raw_key,  # 仅在创建时返回一次
         "name": db_key.name,
         "permissions": db_key.permissions,
+        "tenant_id": db_key.tenant_id,  # Sprint 19: 返回租户 ID
         "created_at": db_key.created_at,
         "expires_at": db_key.expires_at
     }
@@ -1277,3 +1329,150 @@ async def get_task_traces(
         }
         for trace in traces
     ]
+
+
+# ==================== Sprint 19: Tenant API Endpoints ====================
+
+class TenantCreate(BaseModel):
+    """租户创建模型"""
+    name: str
+    slug: str
+    quota_tasks: Optional[int] = Field(default=100, ge=1)
+    quota_storage_mb: Optional[int] = Field(default=1024, ge=64)
+    quota_api_calls: Optional[int] = Field(default=10000, ge=100)
+
+
+class TenantUpdate(BaseModel):
+    """租户更新模型"""
+    name: Optional[str] = None
+    quota_tasks: Optional[int] = Field(None, ge=1)
+    quota_storage_mb: Optional[int] = Field(None, ge=64)
+    quota_api_calls: Optional[int] = Field(None, ge=100)
+    is_active: Optional[bool] = None
+
+
+@app.get("/api/v1/tenants")
+async def list_tenants(
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_read_key)
+):
+    """列出所有租户 - 需要 read 权限"""
+    # 检查是否为 admin 权限
+    if "admin" not in api_key.permissions:
+        # 非 admin 只能看到自己租户
+        tenant = await session.get(Tenant, api_key.tenant_id)
+        if tenant:
+            return [tenant.model_dump()]
+        return []
+
+    result = await session.exec(select(Tenant).order_by(Tenant.id))
+    tenants = result.all()
+    return [t.model_dump() for t in tenants]
+
+
+@app.post("/api/v1/tenants")
+async def create_tenant(
+    tenant_in: TenantCreate,
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """创建租户 - 需要 admin 权限"""
+    if "admin" not in api_key.permissions:
+        raise HTTPException(status_code=403, detail="Admin permission required")
+
+    # 检查名称唯一性
+    result = await session.exec(select(Tenant).where(Tenant.name == tenant_in.name))
+    if result.one_or_none():
+        raise HTTPException(status_code=409, detail="Tenant name already exists")
+
+    # 检查 slug 唯一性
+    result = await session.exec(select(Tenant).where(Tenant.slug == tenant_in.slug))
+    if result.one_or_none():
+        raise HTTPException(status_code=409, detail="Tenant slug already exists")
+
+    # 创建租户
+    new_tenant = Tenant(
+        name=tenant_in.name,
+        slug=tenant_in.slug,
+        quota_tasks=tenant_in.quota_tasks,
+        quota_storage_mb=tenant_in.quota_storage_mb,
+        quota_api_calls=tenant_in.quota_api_calls
+    )
+    session.add(new_tenant)
+    await session.commit()
+    await session.refresh(new_tenant)
+
+    return new_tenant.model_dump()
+
+
+@app.get("/api/v1/tenants/me")
+async def get_current_tenant(
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_read_key)
+):
+    """获取当前 API Key 所属租户信息"""
+    tenant = await session.get(Tenant, api_key.tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    return tenant.model_dump()
+
+
+@app.get("/api/v1/tenants/{tenant_id}")
+async def get_tenant(
+    tenant_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_read_key)
+):
+    """获取租户详情"""
+    # 非 admin 只能查看自己租户
+    if "admin" not in api_key.permissions and api_key.tenant_id != tenant_id:
+        raise HTTPException(status_code=403, detail="Cannot access other tenant")
+
+    tenant = await session.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    return tenant.model_dump()
+
+
+@app.get("/api/v1/tenants/{tenant_id}/quota")
+async def get_tenant_quota(
+    tenant_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_read_key)
+):
+    """获取租户配额使用情况"""
+    # 非 admin 只能查看自己租户配额
+    if "admin" not in api_key.permissions and api_key.tenant_id != tenant_id:
+        raise HTTPException(status_code=403, detail="Cannot access other tenant quota")
+
+    usage = await get_quota_usage(tenant_id, session)
+    return usage
+
+
+@app.put("/api/v1/tenants/{tenant_id}")
+async def update_tenant(
+    tenant_id: int,
+    tenant_in: TenantUpdate,
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_write_key)
+):
+    """更新租户 - 需要 admin 权限"""
+    if "admin" not in api_key.permissions:
+        raise HTTPException(status_code=403, detail="Admin permission required")
+
+    tenant = await session.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    update_data = tenant_in.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(tenant, key, value)
+
+    tenant.updated_at = datetime.now(timezone.utc)
+    session.add(tenant)
+    await session.commit()
+    await session.refresh(tenant)
+
+    return tenant.model_dump()

@@ -28,6 +28,12 @@ const TaskSubmitPanel: React.FC<TaskSubmitPanelProps> = ({ onTaskCreated }) => {
   const [success, setSuccess] = useState<string | null>(null);
   const [objectiveError, setObjectiveError] = useState<string | null>(null);
 
+  // 创建项目状态
+  const [showCreateProject, setShowCreateProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectPath, setNewProjectPath] = useState('/home/chang/agent');
+  const [creatingProject, setCreatingProject] = useState(false);
+
   const apiKey = localStorage.getItem('api_key') || '';
   const hasApiKey = apiKey.length > 0;
 
@@ -47,7 +53,17 @@ const TaskSubmitPanel: React.FC<TaskSubmitPanelProps> = ({ onTaskCreated }) => {
         },
       });
 
-      if (!res.ok) throw new Error('Failed to fetch projects');
+      if (!res.ok) {
+        let errorMsg = 'Failed to fetch projects';
+        try {
+          const errorData = await res.json();
+          errorMsg = errorData.detail || errorMsg;
+        } catch {
+          const text = await res.text();
+          if (text) errorMsg = text;
+        }
+        throw new Error(errorMsg);
+      }
       const data = await res.json();
       setProjects(data);
 
@@ -59,6 +75,56 @@ const TaskSubmitPanel: React.FC<TaskSubmitPanelProps> = ({ onTaskCreated }) => {
       setError(err instanceof Error ? err.message : 'Failed to fetch projects');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 创建项目
+  const handleCreateProject = async () => {
+    if (!newProjectName.trim()) {
+      setError('请输入项目名称');
+      return;
+    }
+
+    setCreatingProject(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/v1/projects', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey,
+        },
+        body: JSON.stringify({
+          name: newProjectName,
+          target_repo_path: newProjectPath,
+        }),
+      });
+
+      if (!res.ok) {
+        let errorMsg = '创建项目失败';
+        try {
+          const errorData = await res.json();
+          errorMsg = errorData.detail || errorMsg;
+        } catch {
+          // 如果不是 JSON，尝试读取文本
+          const text = await res.text();
+          if (text) errorMsg = text;
+        }
+        throw new Error(errorMsg);
+      }
+
+      const project = await res.json();
+      setProjects(prev => [...prev, project]);
+      setSelectedProjectId(project.id);
+      setShowCreateProject(false);
+      setNewProjectName('');
+      setSuccess('项目创建成功！');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '创建项目失败');
+    } finally {
+      setCreatingProject(false);
     }
   };
 
@@ -156,10 +222,58 @@ const TaskSubmitPanel: React.FC<TaskSubmitPanelProps> = ({ onTaskCreated }) => {
         </div>
       )}
 
-      {/* No Projects Warning */}
-      {!loading && projects.length === 0 && hasApiKey && (
-        <div className="mb-4 p-3 bg-yellow-900/30 border border-yellow-500/50 rounded text-yellow-300 text-sm">
-          ⚠️ 请先创建项目才能提交任务
+      {/* No Projects Warning - 显示创建项目表单 */}
+      {!loading && projects.length === 0 && hasApiKey && !showCreateProject && (
+        <div className="mb-4 p-4 bg-yellow-900/30 border border-yellow-500/50 rounded">
+          <p className="text-yellow-300 text-sm mb-3">⚠️ 请先创建项目才能提交任务</p>
+          <button
+            onClick={() => setShowCreateProject(true)}
+            className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded text-white text-sm font-medium transition-colors"
+          >
+            创建新项目
+          </button>
+        </div>
+      )}
+
+      {/* 创建项目表单 */}
+      {!loading && showCreateProject && hasApiKey && (
+        <div className="space-y-4 p-4 bg-slate-800/50 border border-cyan-500/30 rounded">
+          <h3 className="text-lg text-white border-b border-slate-700 pb-2">创建新项目</h3>
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">项目名称:</label>
+            <input
+              type="text"
+              value={newProjectName}
+              onChange={(e) => setNewProjectName(e.target.value)}
+              placeholder="例如: SECA Agent"
+              className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-300 focus:border-cyan-500 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">目标仓库路径:</label>
+            <input
+              type="text"
+              value={newProjectPath}
+              onChange={(e) => setNewProjectPath(e.target.value)}
+              placeholder="例如: /home/chang/agent"
+              className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-300 focus:border-cyan-500 focus:outline-none"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleCreateProject}
+              disabled={creatingProject || !newProjectName.trim()}
+              className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-700 disabled:cursor-not-allowed rounded text-white text-sm font-medium transition-colors"
+            >
+              {creatingProject ? '创建中...' : '创建项目'}
+            </button>
+            <button
+              onClick={() => setShowCreateProject(false)}
+              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-slate-300 text-sm font-medium transition-colors"
+            >
+              取消
+            </button>
+          </div>
         </div>
       )}
 
