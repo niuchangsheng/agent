@@ -178,7 +178,7 @@
 - [x] Sprint 10: API Key 加密存储 — 实现 Feature 9 ✅ QA 通过 (8.80/10)
 - [x] Sprint 11: 审计日志增强 — 实现 Feature 10 ✅ QA 通过 (8.80/10)
 - [x] Sprint 12: 任务 ETA 预测 — 实现 Feature 11 + Feature 13 ✅ QA 通过 (8.80/10)
-- [x] Sprint 13: 系统监控仪表盘 — 实现 Feature 12 ✅ QA 通过 (8.60/10)
+- [!] Sprint 13: 系统监控仪表盘 — 实现 Feature 12 ❌ QA 打回 (6.65/10) - 缺少单元测试
 
 ### v1.3 (已完成)
 - [x] Sprint 14: 前端监控仪表盘 — 实现 Feature 14 ✅ QA 通过 (8.55/10)
