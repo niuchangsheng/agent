@@ -1,111 +1,178 @@
-# Sprint 18 验收合同：镜像优化与 Trace 回放
+# Sprint 19 验收合同：多租户架构 (上) — Feature 22 (核心)
 
 ## 合同签署方
-- **需求方**: product_spec.md Feature 21, Feature 24 (Sprint 18)
+- **需求方**: product_spec.md Feature 22 (Sprint 19)
 - **执行方**: Generator (TDD 工程师)
 - **验收方**: Evaluator (QA 评审官)
 
 ## 功能概述
-本 Sprint 包含两个独立 Feature：
-1. **Feature 21**: 镜像预拉取优化 - 后端调度器 + API
-2. **Feature 24**: Trace 回放增强 - 前端播放器组件
+本 Sprint 实现多租户架构的核心隔离能力：
+1. **Tenant 数据模型**: 租户实体与配额定义
+2. **Project/Task/... 模型扩展**: 所有核心模型新增 tenant_id
+3. **租户隔离中间件**: 自动注入 tenant_id 到 request.state
+4. **Tenant API 端点**: 租户管理与配额监控
+5. **数据隔离测试**: 越权访问 100% 拒绝
 
 ---
 
-## Part A: Feature 21 - 镜像预拉取优化
+## Part A: Tenant 数据模型
 
-### 后端单元测试 (`src/backend/tests/test_image_prepull.py`) - 6 tests
+### 后端单元测试 (`src/backend/tests/test_tenant.py`) - 7 tests
 
 | 测试项 | 验收标准 | 状态 |
 |--------|----------|------|
-| `test_image_config_get` | GET /api/v1/images 返回预配置镜像列表 | [ ] |
-| `test_image_config_add` | POST /api/v1/images 添加新镜像配置 | [ ] |
-| `test_image_status_check` | 检查镜像本地状态（ready/pulling/missing） | [ ] |
-| `test_image_prepull_trigger` | 手动触发镜像预拉取 | [ ] |
-| `test_image_wait_queue` | 镜像未就绪时任务进入等待队列 | [ ] |
-| `test_image_unavailable_error` | 镜像不可用时返回错误 | [ ] |
+| `test_tenant_create` | POST /api/v1/tenants 创建租户成功 | [ ] |
+| `test_tenant_name_unique` | 创建同名租户返回 409 Conflict | [ ] |
+| `test_tenant_slug_unique` | 创建相同 slug 返回 409 Conflict | [ ] |
+| `test_tenant_default_quota` | 新租户配额默认值正确 | [ ] |
+| `test_tenant_list` | GET /api/v1/tenants 返回租户列表 | [ ] |
+| `test_tenant_detail` | GET /api/v1/tenants/{id} 返回详情 | [ ] |
+| `test_tenant_quota_usage` | GET /api/v1/tenants/{id}/quota 返回使用量 | [ ] |
 
-### API 端点设计
-
-| 端点 | 方法 | 功能 |
-|------|------|------|
-| `/api/v1/images` | GET | 获取镜像配置列表及状态 |
-| `/api/v1/images` | POST | 添加镜像配置 |
-| `/api/v1/images/{name}/pull` | POST | 触发镜像拉取 |
-| `/api/v1/images/{name}/status` | GET | 获取镜像状态 |
-
-### 数据模型
+### Tenant 数据模型
 
 ```python
-class ImageConfig(SQLModel, table=True):
-    id: int
-    name: str  # 如 "alpine:3.18"
-    status: str  # "ready", "pulling", "missing", "failed"
-    last_pull_at: datetime
-    created_at: datetime
+class Tenant(SQLModel, table=True):
+    __tablename__ = "tenant"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str  # 租户名称，唯一
+    slug: str  # 租户标识符，唯一 (lowercase + hyphens)
+    quota_tasks: int = Field(default=100, ge=1)  # 任务配额
+    quota_storage_mb: int = Field(default=1024, ge=64)  # 存储配额
+    quota_api_calls: int = Field(default=10000, ge=100)  # API 调用配额
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 ```
 
 ---
 
-## Part B: Feature 24 - Trace 回放增强
+## Part B: Project/Task 模型扩展
 
-### 前端单元测试 (`src/frontend/tests/TracePlayback.test.tsx`) - 8 tests
+### 后端单元测试 (`src/backend/tests/test_tenant_isolation.py`) - 5 tests
 
 | 测试项 | 验收标准 | 状态 |
 |--------|----------|------|
-| `renders playback controls` | 显示播放/暂停、时间轴、倍速选择器 | [ ] |
-| `displays trace steps from API` | 显示 Trace 步骤列表 | [ ] |
-| `play_pause_toggle_works` | 点击播放/暂停切换状态 | [ ] |
-| `speed_selector_changes_speed` | 倍速选择器切换 0.5x/1x/2x/5x | [ ] |
-| `timeline_slider_navigation` | 时间轴滑块导航到指定步骤 | [ ] |
-| `current_step_highlighted` | 当前步骤高亮显示 | [ ] |
-| `handles empty_trace` | 无 Trace 时显示空状态 | [ ] |
-| `sends API key in headers` | 请求携带 API Key | [ ] |
+| `test_cross_tenant_project_access_denied` | Tenant A 无法访问 Tenant B 的项目 | [ ] |
+| `test_cross_tenant_task_access_denied` | Tenant A 无法查询 Tenant B 的任务 | [ ] |
+| `test_cross_tenant_trace_access_denied` | Tenant A 无法获取 Tenant B 的 Trace | [ ] |
+| `test_tenant_scope_auto_filter` | list API 自动按 tenant_id 篇选 | [ ] |
+| `test_apikey_tenant_binding` | API Key 必须绑定 tenant_id | [ ] |
 
-### 组件 Props
+### 模型扩展要求
 
-```typescript
-interface TracePlaybackProps {
-  taskId: number;
-  autoPlay?: boolean;
-  defaultSpeed?: number;  // 0.5, 1, 2, 5
+| 模型 | 新增字段 | 约束 |
+|------|----------|------|
+| Project | `tenant_id: int` | 外键 tenant.id，必填 |
+| Task | `tenant_id: int` | 外键 tenant.id，必填 |
+| Trace | `tenant_id: int` | 外键 tenant.id，必填 |
+| Adr | `tenant_id: int` | 外键 tenant.id，必填 |
+| APIKey | `tenant_id: int` | 外键 tenant.id，必填 |
+| AuditLog | `tenant_id: int` | 外键 tenant.id，可选 (记录操作者租户) |
+
+---
+
+## Part C: API Key 租户绑定测试
+
+### 后端单元测试 (`src/backend/tests/test_apikey_tenant.py`) - 4 tests
+
+| 测试项 | 验收标准 | 状态 |
+|--------|----------|------|
+| `test_apikey_bind_tenant` | 新建 API Key 必须绑定 tenant_id | [ ] |
+| `test_default_tenant_apikey` | 首次创建 API Key 自动绑定 tenant_id=1 | [ ] |
+| `test_apikey_list_tenant_scope` | Tenant A 只能看到自己租户的 Key | [ ] |
+| `test_cross_tenant_key_rejected` | Tenant A 的 Key 无法认证 Tenant B 的操作 | [ ] |
+
+---
+
+## Part D: Tenant API 端点
+
+| 端点 | 方法 | 权限 | 功能 |
+|------|------|------|------|
+| `/api/v1/tenants` | GET | admin | 列出所有租户 |
+| `/api/v1/tenants` | POST | admin | 创建新租户 |
+| `/api/v1/tenants/{tenant_id}` | GET | admin | 获取租户详情 |
+| `/api/v1/tenants/{tenant_id}/quota` | GET | admin | 获取配额使用情况 |
+| `/api/v1/tenants/me` | GET | read | 获取当前租户信息 |
+
+### API 响应格式
+
+**Tenant Create Request**:
+```json
+{
+  "name": "ACME Corporation",
+  "slug": "acme-corp",
+  "quota_tasks": 200,
+  "quota_storage_mb": 2048
 }
 ```
 
-### UI 设计规范
-
-- 时间轴: 滑块控件，显示总步数和当前位置
-- 倍速选择器: 下拉菜单 0.5x/1x/2x/5x
-- 播放/暂停按钮: 图标按钮
-- 步骤列表: 垂直滚动列表，当前步骤高亮（bg-cyan-500/20）
-- Glassmorphism 风格: `backdrop-blur-md bg-slate-900/50 border-cyan-500/30`
+**Tenant Quota Response**:
+```json
+{
+  "tenant_id": 1,
+  "tasks_used": 45,
+  "tasks_quota": 100,
+  "storage_used_mb": 256,
+  "storage_quota_mb": 1024,
+  "api_calls_used": 1234,
+  "api_calls_quota": 10000
+}
+```
 
 ---
 
 ## 完成定义
 
-- [ ] Feature 21 后端测试全部通过 (6 tests)
-- [ ] Feature 24 前端测试全部通过 (8 tests)
-- [ ] Glassmorphism 风格与其他组件一致
-- [ ] 回归测试：不破坏 Sprint 1-17.5 的功能
-- [ ] TypeScript 编译无错误
+- [ ] Tenant 模型测试全部通过 (7 tests)
+- [ ] Tenant 隔离测试全部通过 (5 tests)
+- [ ] API Key 绑定测试全部通过 (4 tests)
+- [ ] Tenant API 端点正常响应
+- [ ] 默认租户 (tenant_id=1) 自动创建
+- [ ] 所有现有端点添加 tenant_id 过滤
+- [ ] 回归测试：Sprint 1-18 全量测试通过
 - [ ] handoff.md 更新完成
 
 ---
 
 ## 技术备注
 
-### Feature 21 实现要点
-- 镜像预拉取使用后台任务异步执行
-- 状态检测使用 Docker SDK (`docker.images.get()`)
-- 拉取失败时记录错误日志，不影响其他镜像
+### Tenant 隔离中间件实现要点
+```python
+@app.middleware("http")
+async def tenant_middleware(request: Request, call_next):
+    # 从 API Key 解析 tenant_id
+    api_key = request.headers.get("X-API-Key")
+    if api_key:
+        tenant_id = await get_tenant_from_api_key(api_key)
+        request.state.tenant_id = tenant_id
+    return await call_next(request)
+```
 
-### Feature 24 实现要点
-- 复用现有 `/api/v1/tasks/{id}/dag-tree` API
-- 添加 `/api/v1/tasks/{id}/traces` 获取完整 Trace 列表
-- 时间轴基于步骤索引，支持跳跃导航
+### 默认租户初始化
+```python
+async def init_default_tenant():
+    # 在 lifespan 中检查并创建默认租户
+    result = await session.exec(select(Tenant).where(Tenant.slug == "default"))
+    if not result.one_or_none():
+        default = Tenant(name="Default Tenant", slug="default")
+        session.add(default)
+        await session.commit()
+```
+
+### 配额检查位置
+- 创建任务前检查 `quota_tasks`
+- 超过配额返回 HTTPException(status_code=429)
+
+---
+
+## 安全边界声明
+
+⚠️ **强制隔离原则**: 所有数据库查询必须附加 `WHERE tenant_id = ?` 过滤。
+任何绕过 tenant_id 过滤的查询视为 **P0 安全漏洞**，QA 评审直接打回。
 
 ---
 
 **签署时间**: 2026-04-19
-**Generator 签名**: Sprint 18 开发启动
+**Generator 签名**: Sprint 19 开发启动

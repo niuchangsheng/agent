@@ -4,10 +4,27 @@ from typing import Optional, Dict
 import sqlalchemy as sa
 from sqlalchemy import JSON
 
+
+class Tenant(SQLModel, table=True):
+    """Sprint 19: 租户模型 - Feature 22 Core"""
+    __tablename__ = "tenant"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(unique=True)  # 租户名称，唯一
+    slug: str = Field(unique=True)  # 租户标识符，唯一 (lowercase + hyphens)
+    quota_tasks: int = Field(default=100, ge=1)  # 任务配额
+    quota_storage_mb: int = Field(default=1024, ge=64)  # 存储配额 MB
+    quota_api_calls: int = Field(default=10000, ge=100)  # API 调用配额
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class Project(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     target_repo_path: str
+    tenant_id: int = Field(default=1, foreign_key="tenant.id")  # Sprint 19: 租户隔离
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -27,7 +44,7 @@ class ProjectConfig(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class Task(SQLModel, table=True):
-    """Sprint 2 + Sprint 7 + Sprint 9 + Sprint 12: 任务模型（含队列支持、优先级和 ETA）"""
+    """Sprint 2 + Sprint 7 + Sprint 9 + Sprint 12 + Sprint 19: 任务模型（含队列支持、优先级、ETA、租户隔离）"""
     id: Optional[int] = Field(default=None, primary_key=True)
     project_id: int = Field(foreign_key="project.id")
     raw_objective: str
@@ -44,10 +61,13 @@ class Task(SQLModel, table=True):
     # Sprint 12: ETA 字段
     estimated_remaining_seconds: Optional[int] = None  # 预计剩余时间（秒）
     estimated_completion_at: Optional[datetime] = None  # 预计完成时间
+    # Sprint 19: 租户隔离
+    tenant_id: int = Field(default=1, foreign_key="tenant.id")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class Trace(SQLModel, table=True):
+    """Sprint 2 + Sprint 19: Trace 模型（含租户隔离）"""
     id: Optional[int] = Field(default=None, primary_key=True)
     task_id: int = Field(foreign_key="task.id")
     parent_trace_id: Optional[int] = Field(default=None, foreign_key="trace.id")
@@ -56,27 +76,37 @@ class Trace(SQLModel, table=True):
     reasoning_log: Optional[str] = None
     applied_patch: Optional[str] = None
     is_success: bool = False
+    # Sprint 19: 租户隔离
+    tenant_id: int = Field(default=1, foreign_key="tenant.id")
+
 
 class Adr(SQLModel, table=True):
+    """Sprint 5 + Sprint 19: ADR 模型（含租户隔离）"""
     id: Optional[int] = Field(default=None, primary_key=True)
     task_id: int = Field(foreign_key="task.id")
     brief_title: str
     generated_markdown_payload: str
+    # Sprint 19: 租户隔离
+    tenant_id: int = Field(default=1, foreign_key="tenant.id")
+
 
 class APIKey(SQLModel, table=True):
-    """Sprint 8: API Key 模型"""
+    """Sprint 8 + Sprint 19: API Key 模型（含租户绑定）"""
     __tablename__ = "api_key"
 
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     key_hash: str  # 哈希后的密钥
     permissions: list = Field(default_factory=list, sa_type=sa.JSON)  # read, write, admin
+    # Sprint 19: 租户绑定
+    tenant_id: int = Field(default=1, foreign_key="tenant.id")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: Optional[datetime] = None
     is_active: bool = Field(default=True)
 
+
 class AuditLog(SQLModel, table=True):
-    """Sprint 8 + Sprint 11: 审计日志模型"""
+    """Sprint 8 + Sprint 11 + Sprint 19: 审计日志模型（含租户归属）"""
     __tablename__ = "audit_log"
 
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -89,6 +119,8 @@ class AuditLog(SQLModel, table=True):
     user_agent: Optional[str] = None  # Sprint 11: User-Agent
     duration_ms: Optional[int] = None  # Sprint 11: 操作耗时（毫秒）
     details: Optional[Dict[str, str]] = Field(default_factory=dict, sa_type=sa.JSON)
+    # Sprint 19: 租户归属
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenant.id")
 
 
 class DockerConfig(SQLModel, table=True):
