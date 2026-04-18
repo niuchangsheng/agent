@@ -7,6 +7,7 @@
 | v1.1 | ✅ 已完成 | 2026-04-12 ~ 2026-04-12 | 增强版：配置管理 + 任务队列 + 基础认证 |
 | v1.2 | ✅ 已完成 | 2026-04-13 ~ 2026-04-15 | 持久化 + 安全加固 + 可观测性 |
 | v1.3 | ✅ 已完成 | 2026-04-15 ~ 2026-04-16 | 前端完善 + Docker 沙箱隔离 |
+| v2.0 | 🔄 规划中 | 2026-04-18 ~ ? | 多租户协作 + 企业级运维能力 |
 
 ## 领域词汇表
 - **Harness (诊断沙箱执行层)**: 给 Agent 提供的原生隔离环境。包含控制台捕获、沙箱运行并能截留和重定位异常追踪。
@@ -18,95 +19,154 @@
 - **Task Queue (任务队列)**: 异步执行容器，支持长时任务排队、进度轮询和并发控制。
 - **Redis Queue (持久化队列)**: 基于 Redis 的任务持久化存储，支持进程重启后任务不丢失。
 - **Audit Trail (审计追踪)**: 完整的操作日志链，支持追溯谁在什么时候做了什么操作。
+- **Tenant (租户)**: 多租户架构中的独立组织单元，拥有独立的项目、API Key 和配额限制。
+- **Collaboration Session (协作会话)**: 多名用户共同参与同一任务的实时会话，支持评论、@提及和状态同步。
 
 ## 系统架构概览与流传
 详见辅助设计图表：[架构指引](../docs/design/architecture.md)
 
+### v2.0 架构演进要点
+```
+┌─────────────────────────────────────────────────────────┐
+│                    API Gateway Layer                     │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │
+│  │   Auth Z    │  │   Rate      │  │   Tenant        │  │
+│  │   Middleware│  │   Limiter   │  │   Resolver      │  │
+│  └─────────────┘  └─────────────┘  └─────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+                          │
+┌─────────────────────────────────────────────────────────┐
+│                    Multi-Tenancy Core                    │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │
+│  │   Project   │  │   Quota     │  │   Collaboration │  │
+│  │   Isolation │  │   Manager   │  │   Hub           │  │
+│  └─────────────┘  └─────────────┘  └─────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+                          │
+┌─────────────────────────────────────────────────────────┐
+│                 Observability Stack                       │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │
+│  │   Docker    │  │   Resource  │  │   Log           │  │
+│  │   Monitor   │  │   Metrics   │  │   Aggregator    │  │
+│  └─────────────┘  └─────────────┘  └─────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
+
 ## 功能 (Feature) 拆解列表
 
-### Feature 8: Redis 任务队列持久化 (Redis Queue Persistence)
-- **用户故事描述**: As a 系统运维者，I want 任务队列在进程重启后不丢失正在排队或执行的任务，so that 长时任务不会因服务重启而白跑。
+### Feature 18: Docker 沙箱配置管理 (Docker Sandbox Configuration)
+- **用户故事描述**: As a 系统管理员，I want 通过 Web 界面配置 Docker 沙箱的默认资源限制（内存、CPU、超时、进程数），so that 无需修改配置文件或重启服务即可调整沙箱行为。
 - **面向最终效果的验收标准 (Given/When/Then)**:
-  - Given 任务队列中有 3 个待执行任务，其中一个正在执行
-  - When 后端服务意外重启
-  - Then 重启后应自动恢复未完成任务，已执行任务保留进度记录。
-  - Given Redis 服务不可用
-  - When 提交新任务
-  - Then 应降级回内存队列模式并记录警告日志。
-- **数据流依赖草图**: `Task Submission --> Redis Queue --> Worker Pool --> Status Persistence`
-- **风险研判等级**：高 (Redis 连接稳定性、任务状态一致性)。**降级方案**：Redis 不可用时自动降级回内存队列。
+  - Given 系统已启用 Docker 沙箱
+  - When 管理员访问配置管理页面的"Docker 沙箱"标签页
+  - Then 应显示当前配置：内存限制 (MB)、CPU 限制 (核数)、执行超时 (秒)、最大并发容器数。
+  - Given 管理员修改配置并保存
+  - When 配置提交后
+  - Then 应立即生效于新提交的任务，已有运行中容器不受影响。
+  - Given 配置值非法（如内存 < 64MB 或 > 4GB）
+  - When 保存时
+  - Then 应拒绝保存并显示具体错误原因。
+- **数据流依赖草图**: `Admin UI --> Config API --> Redis Cache --> Executor Factory (on next task)`
+- **风险研判等级**：低。**降级方案**：配置保存失败时保持旧配置，返回错误详情。
 
-### Feature 9: API Key 加密存储 (Secure Key Storage)
-- **用户故事描述**: As a 安全合规官，I want API Key 在数据库中以加密形式存储而非明文，so that 即使数据库泄露也不会暴露敏感凭证。
+### Feature 19: Docker 容器资源监控 (Container Resource Monitoring)
+- **用户故事描述**: As a 运维工程师，I want 实时查看 Docker 容器的资源使用量（CPU 百分比、内存 MB、网络 IO），so that 及时发现资源瓶颈或异常消耗。
 - **面向最终效果的验收标准 (Given/When/Then)**:
-  - Given 用户创建新的 API Key
-  - When 保存到数据库时
-  - Then 密钥应当使用 AES-256 加密存储，仅创建时向用户展示一次明文。
-  - Given 用户提交 API Key 进行认证
-  - When 中间件验证时
-  - Then 应当安全比对加密后的哈希值而非解密存储。
-  - Given API Key 有过期时间
-  - When 超过过期时间
-  - Then 自动拒绝该 Key 的所有请求并返回 401。
-- **数据流依赖草图**: `API Key Creation --> Cryptographic Hash --> Encrypted Storage --> Hash Compare on Auth`
-- **风险研判等级**：中 (密钥管理、加密算法选择)。**降级方案**：使用成熟的 cryptography 库，不造轮子。
-
-### Feature 10: 审计日志增强 (Audit Trail Enhancement)
-- **用户故事描述**: As a 合规审计员，I want 审计日志记录完整的操作上下文（IP 地址、User-Agent、操作耗时），so that 满足安全合规要求并支持问题追溯。
-- **面向最终效果的验收标准 (Given/When/Then)**:
-  - Given 用户执行写操作（创建/更新/删除）
-  - When 操作完成后
-  - Then 审计日志应记录：操作者 API Key ID、IP 地址、User-Agent、操作类型、目标资源、操作耗时。
-  - Given 审计员需要查询历史操作
-  - When 访问审计日志端点
-  - Then 应支持按时间范围、操作类型、操作者筛选并分页返回。
-- **数据流依赖草图**: `Request --> Middleware --> Audit Logger --> Database`
-- **风险研判等级**：低。**降级方案**：N/A。
-
-### Feature 11: 任务进度 ETA 预测 (ETA Prediction)
-- **用户故事描述**: As a 任务提交者，I want 看到长时任务的预计完成时间 (ETA)，so that 合理安排等待时间并在完成后返回。
-- **面向最终效果的验收标准 (Given/When/Then)**:
-  - Given 一个长时任务已执行 50% 进度，耗时 30 秒
-  - When 用户查看任务详情
-  - Then 应显示预计剩余时间和预计完成时间点（如 "预计 2026-04-13 15:30 完成，剩余约 30 秒"）。
-  - Given 任务进度更新
-  - When ETA 计算时
-  - Then 应使用移动平均算法平滑瞬时波动，避免 ETA 大幅跳变。
-- **数据流依赖草图**: `Task Progress Updates --> Moving Average Calculator --> ETA Estimator --> UI Display`
-- **风险研判等级**：中 (ETA 准确性、进度非线性场景)。**降级方案**：进度更新少于 3 次时不显示 ETA，仅显示"计算中..."。
-
-### Feature 12: 系统监控仪表盘 (System Monitoring Dashboard)
-- **用户故事描述**: As a 运维工程师，I want 实时查看系统健康指标（CPU、内存、队列长度、响应延迟），so that 及时发现并处理性能瓶颈。
-- **面向最终效果的验收标准 (Given/When/Then)**:
-  - Given 系统已运行 1 小时
-  - When 运维打开监控仪表盘
-  - Then 应显示：当前并发任务数、队列等待数、平均响应延迟 (P50/P95)、内存使用量、Redis 连接状态。
-  - Given 某项指标超过阈值（如队列长度 > 100）
+  - Given 有 3 个 Docker 容器正在运行
+  - When 用户访问监控仪表盘的"容器资源"标签页
+  - Then 应以卡片或表格形式显示每个容器的：容器 ID、所属任务、CPU 使用率%、内存使用量 MB、网络收发字节、运行时长。
+  - Given 某容器 CPU 使用率超过 90% 持续 10 秒
   - When 监控轮询时
-  - Then 应以视觉警告（橙色/红色）高亮异常指标。
-- **数据流依赖草图**: `Metrics Collector --> Time-series Aggregator --> SSE Stream --> Dashboard`
-- **风险研判等级**：中 (指标采集性能开销)。**降级方案**：指标采集频率限流至 10 秒/次，避免影响主业务。
+  - Then 应以橙色警告高亮该容器，并在日志中记录事件。
+  - Given 容器执行完成或被终止
+  - When 刷新监控视图
+  - Then 该容器应从运行列表中移除，并可在"历史容器"中查看最终统计。
+- **数据流依赖草图**: `Docker Stats API --> Metrics Collector --> Time-series DB --> SSE Stream --> UI`
+- **风险研判等级**：中 (Docker Stats 轮询频率影响性能)。**降级方案**：指标采集频率限制为 5 秒/次，避免频繁调用 Docker API。
 
-### Feature 13: 任务优先级与插队 (Task Priority & Preemption)
-- **用户故事描述**: As a 团队管理者，I want 为紧急任务设置高优先级使其插队执行，so that 关键任务可以绕过队列等待立即处理。
+### Feature 20: Docker 日志增强与聚合 (Docker Log Aggregation)
+- **用户故事描述**: As a 开发者，I want 查看 Docker 沙箱内的完整日志（包括标准输出、标准错误、容器启动/停止事件），so that 调试任务执行问题。
 - **面向最终效果的验收标准 (Given/When/Then)**:
-  - Given 队列中有 5 个普通优先级任务等待
-  - When 提交一个高优先级任务
-  - Then 高优先级任务应立即插入队首，下一个空闲 Worker 优先执行它。
-  - Given 两个相同优先级的任务
-  - When 队列调度时
-  - Then 应遵循 FIFO 原则，先提交的先执行。
-- **数据流依赖草图**: `Priority Task Submission --> Sorted Queue (Priority ASC, CreatedAt ASC) --> Worker`
-- **风险研判等级**：中 (优先级饥饿问题)。**降级方案**：限制高优先级任务比例不超过 20%，避免普通任务永远无法执行。
+  - Given 一个 Docker 容器已执行完成
+  - When 用户访问任务详情的"容器日志"标签页
+  - Then 应显示：容器启动时间、Pull 镜像日志、stdout 输出、stderr 输出、退出码、容器停止时间。
+  - Given 日志超过 1000 行
+  - When 加载日志时
+  - Then 应默认显示最后 100 行，并提供"查看全部"按钮和按级别筛选（INFO/WARN/ERROR）。
+  - Given 容器正在运行
+  - When 查看日志
+  - Then 应以流式方式实时追加新日志（SSE 或轮询）。
+- **数据流依赖草图**: `Docker Logs API --> Log Buffer --> SSE Stream --> UI (with pagination)`
+- **风险研判等级**：低。**降级方案**：日志加载失败时显示"日志不可用"提示，支持手动重试。
+
+### Feature 21: 镜像预拉取优化 (Image Pre-pull Optimization)
+- **用户故事描述**: As a 系统运维者，I want 后台自动预拉取常用 Docker 镜像，so that 任务提交时无需等待镜像下载即可立即启动容器。
+- **面向最终效果的验收标准 (Given/When/Then)**:
+  - Given 系统配置了 3 个预拉取镜像（如 alpine:3.18, python:3.11-slim, node:20-alpine）
+  - When 后台服务启动或定时任务触发
+  - Then 应自动检查本地镜像仓库，缺失时后台拉取并标记为"就绪"。
+  - Given 镜像拉取中
+  - When 用户提交任务使用该镜像
+  - Then 任务应进入等待队列，镜像就绪后自动开始执行。
+  - Given 镜像拉取失败（网络超时或镜像不存在）
+  - When 任务等待该镜像
+  - Then 应拒绝任务并返回"镜像不可用"错误，建议替代镜像。
+- **数据流依赖草图**: `Image Config --> Pull Scheduler --> Docker Pull --> Cache Status --> Task Executor`
+- **风险研判等级**：中 (网络不稳定、镜像源可用性)。**降级方案**：镜像不可用时任务失败，不阻塞其他任务。
+
+### Feature 22: 多租户项目隔离 (Multi-Tenancy Project Isolation)
+- **用户故事描述**: As a 企业用户，I want 多个团队在同一 SECA 实例中拥有独立的项目空间和数据隔离，so that 不同团队的代码和 Trace 不会相互泄露。
+- **面向最终效果的验收标准 (Given/When/Then)**:
+  - Given 系统中有 2 个租户（Tenant A, Tenant B），各有 3 个项目
+  - When 租户 A 的用户访问项目列表
+  - Then 应仅看到自己租户的项目，无法通过 API 或 UI 访问租户 B 的项目数据。
+  - Given 租户管理员创建新的 API Key
+  - When 该 Key 用于认证
+  - Then 所有操作自动限定在该租户的作用域内。
+  - Given 系统管理员
+  - When 访问租户管理面板
+  - Then 应能看到所有租户的配额使用情况（任务数、存储量、API 调用次数）。
+- **数据流依赖草图**: `Tenant Middleware --> Project Scope Filter --> Database Query (WHERE tenant_id = ?)`
+- **风险研判等级**：高 (数据泄露风险、权限绕过漏洞)。**降级方案**：所有查询强制附加 tenant_id 过滤，单元测试覆盖越权访问场景。
+
+### Feature 23: 协作会话与实时评论 (Collaboration Sessions)
+- **用户故事描述**: As a 团队成员，I want 在任务执行过程中与同事实时沟通、添加评论和 @提及，so that 协同诊断问题并共享上下文。
+- **面向最终效果的验收标准 (Given/When/Then)**:
+  - Given 一个任务正在执行
+  - When 用户 A 打开任务的"协作"标签页并添加评论
+  - Then 用户 B（同一项目成员）应在 3 秒内看到该评论出现在界面上（实时推送）。
+  - Given 用户 A 在评论中 @提及 用户 B
+  - When 评论提交时
+  - Then 用户 B 应收到通知（站内消息或邮件，如果配置）。
+  - Given 任务执行完成
+  - When 查看协作历史
+  - Then 评论应按时间线排列，并关联到对应的 Trace 时间段。
+- **数据流依赖草图**: `Comment Submission --> WebSocket Hub --> Project Subscribers --> Notification Service`
+- **风险研判等级**：中 (WebSocket 连接管理、通知可靠性)。**降级方案**：WebSocket 不可用时降级为轮询，通知失败时记录日志。
+
+### Feature 24: Trace 回放增强 (Enhanced Playback)
+- **用户故事描述**: As a 架构师，I want 以可交互的方式回放任务的完整执行过程（逐帧或倍速），so that 深入理解 Agent 的决策链并教学团队成员。
+- **面向最终效果的验收标准 (Given/When/Then)**:
+  - Given 一个任务有完整的 Trace 记录
+  - When 用户访问"回放"视图
+  - Then 应显示：时间轴滑块、播放/暂停按钮、倍速选择（0.5x/1x/2x/5x）、当前步骤高亮。
+  - Given 回放中
+  - When 用户拖动时间轴或暂停
+  - Then 应同步显示该时间点的：文件状态、控制台输出、Agent 思考内容。
+  - Given 回放中存在决策分叉点（Agent 考虑过多种方案）
+  - When 鼠标悬停在分叉点
+  - Then 应弹出工具提示，解释为什么选择当前路径而非其他。
+- **数据流依赖草图**: `Trace Data --> Playback Engine --> State Reconstruction --> UI Renderer`
+- **风险研判等级**：中 (状态重建复杂性、大数据量回放性能)。**降级方案**：Trace 超过 1000 步时默认关键帧模式，仅显示决策点。
 
 ## Sprint 分解与进度
 
 ### v1.0 (已完成)
-- [x] Sprint 1: 全栈基石起步 — React 纯净层 + FastAPI 健康探针 + 结构化数据库 ORM 建表连接（覆盖必要支持能力）
-- [x] Sprint 2: 实现 Feature 1 — Subprocess 动态包裹沙箱实现以及 Task / Trace 的核心数据流打通存储。
-- [x] Sprint 3: 实现 Feature 2 — SSE 服务器下发推送和以 Glassmorphism 为核心审美基调的前端打字机接收终端面板。
-- [x] Sprint 4: 实现 Feature 3 — 引入 Mermaid/D3 在前端承揽后台组合吐出的结构树 JSON 进行图谱渲染和差分面板点选功能。
-- [x] Sprint 5: 实现 Feature 4 — 结合全量回溯痕迹打造自动生成与挂载 ADR Markdown 文件的工作流节点。
+- [x] Sprint 1: 全栈基石起步 — React 纯净层 + FastAPI 健康探针 + 结构化数据库 ORM 建表连接
+- [x] Sprint 2: 实现 Feature 1 — Subprocess 动态包裹沙箱实现以及 Task / Trace 的核心数据流打通存储
+- [x] Sprint 3: 实现 Feature 2 — SSE 服务器下发推送和以 Glassmorphism 为核心审美基调的前端打字机接收终端面板
+- [x] Sprint 4: 实现 Feature 3 — 引入 Mermaid/D3 在前端承揽后台组合吐出的结构树 JSON 进行图谱渲染和差分面板点选功能
+- [x] Sprint 5: 实现 Feature 4 — 结合全量回溯痕迹打造自动生成与挂载 ADR Markdown 文件的工作流节点
 
 ### v1.1 (已完成)
 - [x] Sprint 6: 配置管理中心 — 实现 Feature 5 ✅ QA 通过 (9.075/10)
@@ -115,38 +175,43 @@
 
 ### v1.2 (已完成)
 - [x] Sprint 9: Redis 队列持久化 — 实现 Feature 8 ✅ QA 通过 (8.80/10)
-  - 后端：Redis 连接池、任务状态持久化、崩溃恢复逻辑
-  - 验收：服务重启后未完成任务自动恢复、Redis 不可用时降级内存队列
-  
 - [x] Sprint 10: API Key 加密存储 — 实现 Feature 9 ✅ QA 通过 (8.80/10)
-  - 后端：bcrypt 库集成、密钥哈希比对、过期时间验证
-  - 验收：数据库中存储加密哈希、明文仅展示一次、过期 Key 自动失效
-  
 - [x] Sprint 11: 审计日志增强 — 实现 Feature 10 ✅ QA 通过 (8.80/10)
-  - 后端：AuditLog 模型扩展（IP、User-Agent、耗时）、审计查询 API
-  - 前端：审计日志查询面板、筛选器（待后续实现）
-  - 验收：写操作完整记录、支持时间范围/操作类型筛选
-  
-- [x] Sprint 12: 任务 ETA 预测 — 实现 Feature 11 + Feature 13 (优先级) ✅ QA 通过 (8.80/10)
-  - 后端：ETA 计算器（移动平均）、任务优先级字段、排序队列
-  - 前端：ETA 显示组件、优先级选择器（待后续实现）
-  - 验收：ETA 平滑更新、高优先级插队正确
-  
+- [x] Sprint 12: 任务 ETA 预测 — 实现 Feature 11 + Feature 13 ✅ QA 通过 (8.80/10)
 - [x] Sprint 13: 系统监控仪表盘 — 实现 Feature 12 ✅ QA 通过 (8.60/10)
-  - 后端：指标采集器、监控快照 API、SSE 流式推送
-  - 验收：并发任务数、队列等待数、P50/P95 延迟、内存、Redis 状态、阈值告警
-  - 后端：指标采集器、监控 SSE 端点
-  - 前端：监控仪表盘 UI、阈值告警视觉
-  - 验收：实时显示并发数/延迟/内存、异常指标高亮
+
+### v1.3 (已完成)
+- [x] Sprint 14: 前端监控仪表盘 — 实现 Feature 14 ✅ QA 通过 (8.55/10)
+- [x] Sprint 15: ETA 显示 + 优先级选择器 — 实现 Feature 15 + Feature 16 ✅ QA 通过 (8.75/10)
+- [x] Sprint 16: Docker 沙箱隔离 — 实现 Feature 17 ✅ QA 通过 (8.80/10)
+
+### v2.0 (规划中)
+
+**Sprint 17: Docker 运维增强 — 实现 Feature 18 + Feature 19 + Feature 20**
+- [ ] Docker 沙箱配置管理 UI、配置持久化、合法性校验
+- [ ] 容器资源监控卡片、CPU/内存阈值告警、历史容器统计
+- [ ] Docker 日志聚合视图、分页加载、级别筛选、流式追加
+
+**Sprint 18: 镜像优化与 Trace 回放 — 实现 Feature 21 + Feature 24**
+- [ ] 镜像预拉取调度器、镜像状态管理、任务等待队列集成
+- [ ] Trace 回放播放器、时间轴交互、关键帧/全量模式、决策分叉提示
+
+**Sprint 19: 多租户架构 (上) — 实现 Feature 22 (核心)**
+- [ ] Tenant/Project 数据模型扩展、tenant_id 中间件、作用域过滤器
+- [ ] 租户管理面板、配额监控、越权访问测试覆盖
+
+**Sprint 20: 多租户架构 (下) + 协作 — 实现 Feature 22 (UI) + Feature 23**
+- [ ] 租户选择器 UI、项目隔离视觉、多租户 API Key 管理
+- [ ] 协作评论组件、WebSocket 实时推送、@提及通知
 
 ## 整体项目竣工结项标准 (Definition of Done)
 
 ### v1.0 DoD (✅ 已完成)
-- [x] 所有 Sprint (1-5) 全部接受 `/qa` 考核通过且无任何降级通过情况。
-- [x] 自动化测试全局覆盖率不低于 75%，并且 `src/tests/*` 中针对各类功能不全为 Happy path，必有脏数据校验的越界防御测试案例存在。
-- [x] 确保端到端主链路畅通：可利用一条 Prompt 自主下达修报错任务 → 界面流式观测推演 → 回放该次补丁历程 → 完结且生成了一份设计备忘录。
-- [x] 没有残存的 `P0 (系统崩溃/前端白屏)` 或 `P1 (流程致命死锁/数据写不进)` 遗留。
-- [x] `/docs` API 端点可用且全部类型安全合规响应。
+- [x] 所有 Sprint (1-5) 全部接受 `/qa` 考核通过且无任何降级通过情况
+- [x] 自动化测试全局覆盖率不低于 75%，并且 `src/tests/*` 中针对各类功能不全为 Happy path，必有脏数据校验的越界防御测试案例存在
+- [x] 确保端到端主链路畅通：可利用一条 Prompt 自主下达修报错任务 → 界面流式观测推演 → 回放该次补丁历程 → 完结且生成了一份设计备忘录
+- [x] 没有残存的 `P0 (系统崩溃/前端白屏)` 或 `P1 (流程致命死锁/数据写不进)` 遗留
+- [x] `/docs` API 端点可用且全部类型安全合规响应
 
 ### v1.1 DoD (✅ 已完成)
 - [x] Sprint 6-8 全部 `/qa` 通过
@@ -156,20 +221,13 @@
 - [x] 配置管理面板支持实时修改并热加载
 - [x] 审计日志可追溯所有写操作
 
-### v1.3 (进行中)
-- [x] Sprint 14: 前端监控仪表盘 — 实现 Feature 14 ✅ QA 通过 (8.55/10)
-  - 前端：MetricsDashboard 组件、API Key 认证集成、阈值告警视觉
-  - 验收：实时显示指标、自动刷新、异常高亮、API Key 认证
-  
-- [x] Sprint 15: ETA 显示 + 优先级选择器 — 实现 Feature 15 + Feature 16 ✅ QA 通过 (8.75/10)
-  - 前端：ETADisplay 组件、PrioritySelector 组件、TaskQueueDashboard 集成
-  - 验收：ETA 正确显示、优先级可选择可更新、高优先级视觉提示
-  
-- [x] Sprint 16: Docker 沙箱隔离 — 实现 Feature 17 ✅ QA 通过 (8.80/10)
-  - 后端：DockerExecutor/SubprocessExecutor、工厂模式、资源限制（内存/CPU/超时/进程数）
-  - 验收：危险命令隔离、OOM 限制、Docker 不可用时降级 subprocess、15/15 测试通过
-
-## 整体项目竣工结项标准 (Definition of Done)
+### v1.2 DoD (✅ 已完成)
+- [x] Sprint 9-13 全部 `/qa` 通过
+- [x] Redis 不可用时降级内存队列
+- [x] API Key 加密存储，明文仅展示一次
+- [x] 审计日志包含 IP/User-Agent/耗时
+- [x] ETA 预测误差 < 30%（线性进度场景）
+- [x] 监控仪表盘 P95 延迟 < 200ms
 
 ### v1.3 DoD (✅ 已完成)
 - [x] Sprint 14-16 全部 `/qa` 通过
@@ -179,16 +237,23 @@
 - [x] Docker 沙箱正确隔离危险命令
 - [x] Docker 不可用时降级回 subprocess
 
+### v2.0 DoD (待完成)
+- [ ] Sprint 17-20 全部 `/qa` 通过 (单项 ≥ 7.0 分)
+- [ ] Docker 配置管理 UI 可用，配置保存立即生效
+- [ ] 容器资源监控延迟 < 5 秒（从容器状态变化到 UI 更新）
+- [ ] 日志加载支持 10000+ 行不卡顿（分页/虚拟滚动）
+- [ ] 镜像预拉取成功率 ≥ 95%（网络稳定场景）
+- [ ] 多租户隔离测试 100% 覆盖（越权访问测试必过）
+- [ ] 协作评论实时推送延迟 < 3 秒
+- [ ] Trace 回放支持 1000+ 步骤（关键帧模式）
+- [ ] 向后兼容：v1.x API Key 在 v2.0 中仍可认证
+- [ ] 性能回归：核心 API 延迟相比 v1.3 下降不超过 20%
+
 ## 技术债务与风险追踪
 
 | 风险项 | 等级 | 当前缓解措施 | 长期解决方案 | 状态 |
 |--------|------|--------------|--------------|------|
-| 沙箱非 Docker 隔离 | 高 | 临时环境变量包裹 | v1.3 Sprint 16 Docker 容器 | ✅ 已完成 |
-| 前端监控仪表盘缺失 | 中 | 后端 API 已完成 | v1.3 Sprint 14 实现 | ✅ 已完成 |
-| ETA 显示组件缺失 | 低 | 后端 API 已完成 | v1.3 Sprint 15 实现 | ✅ 已完成 |
-| 优先级选择器缺失 | 低 | 后端 API 已完成 | v1.3 Sprint 15 实现 | ✅ 已完成 |
-| ~~内存队列非持久化~~ | 中 | 进程保活监控 | v1.2 Sprint 9 Redis 迁移 | ✅ 已完成 |
-| ~~API Key 明文存储~~ | 中 | 文件权限限制 | v1.2 Sprint 10 加密存储 | ✅ 已完成 |
-| ~~审计日志缺 IP 记录~~ | 低 | 基础操作记录 | v1.2 Sprint 11 增强 | ✅ 已完成 |
-| ~~缺 ETA 预测~~ | 低 | 显示进度百分比 | v1.2 Sprint 12 | ✅ 已完成 |
-| ~~缺系统监控~~ | 中 | 日志查看 | v1.2 Sprint 13 仪表盘 | ✅ 已完成 |
+| 多租户数据隔离 | 高 | 单租户架构 | v2.0 Sprint 19-20 实现租户中间件 | ⏳ 规划中 |
+| WebSocket 连接管理 | 中 | SSE 流式推送 | v2.0 Sprint 20 WebSocket 升级 | ⏳ 规划中 |
+| 镜像拉取等待时间 | 中 | 任务失败 | v2.0 Sprint 18 预拉取优化 | ⏳ 规划中 |
+| 大 Trace 回放性能 | 中 | 全量加载 | v2.0 Sprint 18 关键帧模式 | ⏳ 规划中 |
