@@ -68,7 +68,7 @@ class TestDockerConfig:
             assert data["max_concurrent_containers"] == 5
 
     async def test_docker_config_validation_rejects_low_memory(self):
-        """拒绝内存 < 64MB"""
+        """拒绝内存 < 64MB - FastAPI Pydantic 返回 422"""
         from app.database import engine
         from sqlmodel import SQLModel
         async with engine.begin() as conn:
@@ -84,10 +84,11 @@ class TestDockerConfig:
                 "max_concurrent_containers": 3
             }
             response = await client.put("/api/v1/docker-config", json=invalid_config, headers=headers)
-            assert response.status_code == 400
+            # FastAPI Pydantic 验证失败返回 422 Unprocessable Entity
+            assert response.status_code == 422
 
     async def test_docker_config_validation_rejects_high_memory(self):
-        """拒绝内存 > 4GB"""
+        """拒绝内存 > 4GB - FastAPI Pydantic 返回 422"""
         from app.database import engine
         from sqlmodel import SQLModel
         async with engine.begin() as conn:
@@ -103,7 +104,122 @@ class TestDockerConfig:
                 "max_concurrent_containers": 3
             }
             response = await client.put("/api/v1/docker-config", json=invalid_config, headers=headers)
-            assert response.status_code == 400
+            # FastAPI Pydantic 验证失败返回 422 Unprocessable Entity
+            assert response.status_code == 422
+
+    async def test_docker_config_validation_rejects_low_cpu(self):
+        """拒绝 CPU < 0.5 核 - FastAPI Pydantic 返回 422"""
+        from app.database import engine
+        from sqlmodel import SQLModel
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await self._get_api_key_header(client)
+
+            invalid_config = {
+                "memory_limit_mb": 512,
+                "cpu_limit": 0.1,  # 低于最小值
+                "timeout_seconds": 60,
+                "max_concurrent_containers": 3
+            }
+            response = await client.put("/api/v1/docker-config", json=invalid_config, headers=headers)
+            assert response.status_code == 422
+
+    async def test_docker_config_validation_rejects_high_cpu(self):
+        """拒绝 CPU > 4.0 核 - FastAPI Pydantic 返回 422"""
+        from app.database import engine
+        from sqlmodel import SQLModel
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await self._get_api_key_header(client)
+
+            invalid_config = {
+                "memory_limit_mb": 512,
+                "cpu_limit": 8.0,  # 高于最大值
+                "timeout_seconds": 60,
+                "max_concurrent_containers": 3
+            }
+            response = await client.put("/api/v1/docker-config", json=invalid_config, headers=headers)
+            assert response.status_code == 422
+
+    async def test_docker_config_validation_rejects_low_timeout(self):
+        """拒绝 timeout < 10 秒 - FastAPI Pydantic 返回 422"""
+        from app.database import engine
+        from sqlmodel import SQLModel
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await self._get_api_key_header(client)
+
+            invalid_config = {
+                "memory_limit_mb": 512,
+                "cpu_limit": 1,
+                "timeout_seconds": 5,  # 低于最小值
+                "max_concurrent_containers": 3
+            }
+            response = await client.put("/api/v1/docker-config", json=invalid_config, headers=headers)
+            assert response.status_code == 422
+
+    async def test_docker_config_validation_rejects_high_timeout(self):
+        """拒绝 timeout > 300 秒 - FastAPI Pydantic 返回 422"""
+        from app.database import engine
+        from sqlmodel import SQLModel
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await self._get_api_key_header(client)
+
+            invalid_config = {
+                "memory_limit_mb": 512,
+                "cpu_limit": 1,
+                "timeout_seconds": 600,  # 高于最大值
+                "max_concurrent_containers": 3
+            }
+            response = await client.put("/api/v1/docker-config", json=invalid_config, headers=headers)
+            assert response.status_code == 422
+
+    async def test_docker_config_validation_rejects_low_containers(self):
+        """拒绝 max_concurrent_containers < 1 - FastAPI Pydantic 返回 422"""
+        from app.database import engine
+        from sqlmodel import SQLModel
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await self._get_api_key_header(client)
+
+            invalid_config = {
+                "memory_limit_mb": 512,
+                "cpu_limit": 1,
+                "timeout_seconds": 60,
+                "max_concurrent_containers": 0  # 低于最小值
+            }
+            response = await client.put("/api/v1/docker-config", json=invalid_config, headers=headers)
+            assert response.status_code == 422
+
+    async def test_docker_config_validation_rejects_high_containers(self):
+        """拒绝 max_concurrent_containers > 10 - FastAPI Pydantic 返回 422"""
+        from app.database import engine
+        from sqlmodel import SQLModel
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await self._get_api_key_header(client)
+
+            invalid_config = {
+                "memory_limit_mb": 512,
+                "cpu_limit": 1,
+                "timeout_seconds": 60,
+                "max_concurrent_containers": 20  # 高于最大值
+            }
+            response = await client.put("/api/v1/docker-config", json=invalid_config, headers=headers)
+            assert response.status_code == 422
 
 
 @pytest.mark.asyncio

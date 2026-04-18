@@ -2,48 +2,59 @@
 
 ## 最新进度与心跳留存
 - **最近更新时间**: 2026-04-18
-- **当前版本**: v1.2 ✅ Sprint 13 QA 复审通过
-- **更新方身份**: SECA Evaluator
+- **当前版本**: v2.0 🔄 Sprint 17 Docker 运维增强修复完成
+- **更新方身份**: SECA Generator (TDD 工程师)
 
 ## 当前游标与系统状态
-- **核心阶段落点**: **Sprint 13 (系统监控仪表盘) QA 复审通过**
+- **核心阶段落点**: **Sprint 17 (Docker 运维增强) 修复完成**
 - **目标执行体进展**:
   - Sprint 1-5 (v1.0) ✅ 已完成
   - Sprint 6-8 (v1.1) ✅ 已完成
-  - Sprint 9-12 (v1.2) ✅ 已完成
-  - Sprint 13 (v1.2) ✅ QA 复审通过 (8.55/10)
+  - Sprint 9-13 (v1.2) ✅ 已完成
+  - Sprint 14-16 (v1.3) ✅ 已完成
+  - Sprint 17 (v2.0) [/] 修复完成，待 QA 复审
 
-## Sprint 13 QA 复审结果
+## Sprint 17 修复内容
 
-### 评审得分
-| 维度 | 分数 | 权重 |
-|------|------|------|
-| 功能完整性 | 9/10 | 35% |
-| 设计工程质量 | 8/10 | 25% |
-| 代码内聚素质 | 9/10 | 20% |
-| 用户体验 | 8/10 | 20% |
-| **加权总分** | **8.55/10** | 100% |
+### QA 打回原因修复状态
+| 问题 | 修复状态 | 证据 |
+|------|----------|------|
+| 前端 TypeScript 编译失败 | ✅ 已修复 | `npx tsc --noEmit` 无错误 |
+| 测试数据库锁问题 | ✅ 已修复 | pytest 13 tests passed |
+| UI 组件无 Vitest 测试 | ✅ 已修复 | 24 前端测试全部通过 |
+| 边界测试缺失 | ✅ 已修复 | 新增 6 个边界测试 |
+| 后端测试期望值错误 | ✅ 已修复 | 400 → 422 (FastAPI 标准) |
 
-### 修复项验证
-| 打回问题 | 修复状态 | 证据 |
-|----------|----------|------|
-| 无前端单元测试 | ✅ 已修复 | `MetricsDashboard.test.tsx` 8 个测试通过 |
-| 无后端集成测试 | ✅ 已修复 | `test_metrics.py` 19 个测试通过 |
-| API Key 认证性能 | ✅ 已修复 | SHA-256 替代 bcrypt，196 Key 验证 0.24ms |
+### 测试执行证据
 
-### E2E 发现的缺陷修复
-| 问题 | 状态 | 修复 |
-|------|------|------|
-| metrics API 权限设计缺陷 | ✅ 已修复 | `require_write_key` → `require_read_key` |
+**前端测试**:
+```bash
+$ cd src/frontend && npm test
+ Test Files  12 passed (12)
+      Tests  69 passed (69)
+```
 
-**修复说明**: `/api/v1/metrics` 是读取监控数据，应只需 `read` 权限。原设计要求 `write` 权限导致用户用默认创建的 Key（只有 `read`）访问时返回 403。
+**后端测试**:
+```bash
+$ cd src/backend && python -m pytest tests/test_docker_ops.py -v
+======================== 13 passed in 2.42s =========================
+```
 
-**修复文件**: `src/backend/app/main.py` L18, L635, L777, L788
+### 新增测试文件
+- `src/frontend/tests/DockerConfigPanel.test.tsx` (8 tests)
+- `src/frontend/tests/ContainerMonitor.test.tsx` (8 tests)
+- `src/frontend/tests/DockerLogViewer.test.tsx` (8 tests)
+
+### 边界测试覆盖
+- memory_limit_mb: 64-4096 ✅
+- cpu_limit: 0.5-4.0 ✅
+- timeout_seconds: 10-300 ✅
+- max_concurrent_containers: 1-10 ✅
 
 ## 下一步动作
 
-执行 `/build` 继续 Sprint 17 Docker 运维增强修复
+执行 `/qa` 对 Sprint 17 进行复审验收
 
 ---
 
-**Evaluator 签名**: Sprint 13 QA 复审通过
+**Generator 签名**: Sprint 17 修复完成，待 QA 复审
