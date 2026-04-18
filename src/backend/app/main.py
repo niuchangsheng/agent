@@ -790,9 +790,11 @@ async def stream_metrics(
     """SSE 流式推送系统监控指标（10 秒更新频率）"""
     collector = MetricsCollector()
 
+    # 关键修复：在 session 关闭前先获取 snapshot 数据
+    # 避免在生成器 yield 时使用已释放的 session
+    snapshot = await collector.get_snapshot(session)
+
     async def event_generator():
-        # 发送一次指标数据后断开（简化实现，实际生产可改为无限循环）
-        snapshot = await collector.get_snapshot(session)
         yield f"data: {snapshot}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
