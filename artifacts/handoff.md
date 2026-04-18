@@ -2,83 +2,48 @@
 
 ## 最新进度与心跳留存
 - **最近更新时间**: 2026-04-18
-- **当前版本**: v1.2 🔄 Sprint 13 QA 打回
+- **当前版本**: v1.2 ✅ Sprint 13 QA 复审通过
 - **更新方身份**: SECA Evaluator
 
 ## 当前游标与系统状态
-- **核心阶段落点**: **Sprint 13 (系统监控仪表盘) QA 打回，等待修复**
+- **核心阶段落点**: **Sprint 13 (系统监控仪表盘) QA 复审通过**
 - **目标执行体进展**:
   - Sprint 1-5 (v1.0) ✅ 已完成
   - Sprint 6-8 (v1.1) ✅ 已完成
   - Sprint 9-12 (v1.2) ✅ 已完成
-  - Sprint 13 (v1.2) [!] QA 打回 (6.65/10) - 缺少单元测试
+  - Sprint 13 (v1.2) ✅ QA 复审通过 (8.55/10)
 
-## Sprint 13 QA 评审结果
+## Sprint 13 QA 复审结果
 
-### 四维修炼打分
-| 维度 | 得分 | 权重 | 加权分 |
-|------|------|------|--------|
-| 功能完整实现度 | 7/10 | 35% | 2.45 |
-| 设计工程质量 | 8/10 | 25% | 2.00 |
-| 代码内聚素质 | 4/10 | 20% | 0.80 |
-| 人类感受用户体验 | 7/10 | 20% | 1.40 |
-| **总计** | | | **6.65** |
+### 评审得分
+| 维度 | 分数 | 权重 |
+|------|------|------|
+| 功能完整性 | 9/10 | 35% |
+| 设计工程质量 | 8/10 | 25% |
+| 代码内聚素质 | 9/10 | 20% |
+| 用户体验 | 8/10 | 20% |
+| **加权总分** | **8.55/10** | 100% |
 
-### 判定结果
-**[!] 打回** (总分 6.65 < 7.0 阈值)
+### 修复项验证
+| 打回问题 | 修复状态 | 证据 |
+|----------|----------|------|
+| 无前端单元测试 | ✅ 已修复 | `MetricsDashboard.test.tsx` 8 个测试通过 |
+| 无后端集成测试 | ✅ 已修复 | `test_metrics.py` 19 个测试通过 |
+| API Key 认证性能 | ✅ 已修复 | SHA-256 替代 bcrypt，196 Key 验证 0.24ms |
 
-### 打回原因
-1. **无前端单元测试**: `MetricsDashboard.test.tsx` 缺失
-2. **无后端集成测试**: `test_metrics.py` 缺失
-3. **TDD 流程未执行**: 先实现代码后补测试（实际未补）
-4. **API Key 认证性能问题**: bcrypt 验证 196 个 Key 需 120 秒（已修复为 SHA-256）
+### E2E 发现的缺陷修复
+| 问题 | 状态 | 修复 |
+|------|------|------|
+| metrics API 权限设计缺陷 | ✅ 已修复 | `require_write_key` → `require_read_key` |
 
-### 整改要求
-1. 添加 `src/frontend/src/components/__tests__/MetricsDashboard.test.tsx`
-2. 添加 `src/backend/tests/test_metrics.py`
-3. 确保测试覆盖率 ≥70%
-4. 验证 API Key 认证性能（196 Key 验证 <1 秒）
+**修复说明**: `/api/v1/metrics` 是读取监控数据，应只需 `read` 权限。原设计要求 `write` 权限导致用户用默认创建的 Key（只有 `read`）访问时返回 403。
+
+**修复文件**: `src/backend/app/main.py` L18, L635, L777, L788
 
 ## 下一步动作
 
-执行 `/build` 修复 Sprint 13 的问题，然后重新执行 `/qa` 验收
+执行 `/build` 继续 Sprint 17 Docker 运维增强修复
 
-### 修复优先级
-1. **P0**: 添加 MetricsDashboard 组件 Vitest 测试
-2. **P0**: 添加后端 /api/v1/metrics pytest 测试
-3. **P1**: 添加 /api/v1/metrics/stream SSE 接口测试
-4. **P1**: 前端增加数据导出功能（可选）
+---
 
-## 证据链附录
-
-### curl 测试证据
-```bash
-# Metrics API 测试
-curl -s http://localhost:8000/api/v1/metrics -H "X-API-Key: <key>"
-# 返回：{"concurrent_tasks":1,"queued_tasks":2,"latency_p50_ms":433.0,...}
-
-# Health 检查
-curl http://localhost:8000/api/v1/health
-# 返回：{"status":"active"}
-
-# 前端服务检查
-curl http://localhost:5173/ | head -15
-# 返回：<!doctype html><html lang="en">...
-```
-
-### 测试缺失证据
-```bash
-$ ls src/frontend/src/components/__tests__/
-ApiKeyManager.test.tsx  # 无 MetricsDashboard 测试
-
-$ ls src/backend/tests/
-test_docker_ops.py  # 无 test_metrics.py
-```
-
-### 性能修复证据
-```bash
-# SHA-256 性能测试
-Hash generation time: 0.02ms
-Verify time (1000 iterations): 1.23ms
-196 keys verification time: 0.24ms  # 原来 bcrypt 需 120 秒
-```
+**Evaluator 签名**: Sprint 13 QA 复审通过

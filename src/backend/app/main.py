@@ -15,7 +15,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.database import engine, get_db_session
 from app.models import Project, Task, ProjectConfig, APIKey, AuditLog, DockerConfig
-from app.auth import require_write_key, generate_api_key, hash_api_key
+from app.auth import require_write_key, require_read_key, generate_api_key, hash_api_key
 from app.eta import update_task_eta, get_eta_calculator
 from app.metrics import MetricsCollector, check_thresholds
 # Sprint 9: 导入新队列模块
@@ -632,7 +632,7 @@ async def custom_404_handler(request, exc):
 
 # ============== Sprint 8: Auth & Audit Endpoints ==============
 
-from app.auth import hash_api_key, generate_api_key, require_write_key
+from app.auth import hash_api_key, generate_api_key, require_write_key, require_read_key
 
 @app.post("/api/v1/auth/api-keys")
 async def create_api_key(
@@ -774,7 +774,7 @@ class SystemMetricsResponse(BaseModel):
 @app.get("/api/v1/metrics")
 async def get_metrics(
     session: AsyncSession = Depends(get_db_session),
-    api_key: APIKey = Depends(require_write_key)
+    api_key: APIKey = Depends(require_read_key)
 ):
     """获取系统监控指标快照"""
     collector = MetricsCollector()
@@ -785,7 +785,7 @@ async def get_metrics(
 @app.get("/api/v1/metrics/stream")
 async def stream_metrics(
     session: AsyncSession = Depends(get_db_session),
-    api_key: APIKey = Depends(require_write_key)
+    api_key: APIKey = Depends(require_read_key)
 ):
     """SSE 流式推送系统监控指标（10 秒更新频率）"""
     collector = MetricsCollector()
