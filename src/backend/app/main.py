@@ -120,9 +120,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
-    # Sprint 19: 初始化默认租户
+    # Sprint 19: 初始化默认租户和 API Key
     async with AsyncSession(engine) as session:
-        await init_default_tenant(session)
+        tenant, default_key = await init_default_tenant(session)
+        if default_key:
+            logger.info(f"🔑 Default API Key created: {default_key}")
+            logger.info("   Store this key in localStorage: localStorage.setItem('api_key', '<key>')")
 
     # Sprint 9: 初始化队列（支持 Redis 降级）
     redis_url = os.getenv("REDIS_URL")

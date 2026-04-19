@@ -5,6 +5,17 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models import Tenant, APIKey
 from app.database import engine
 import hashlib
+import secrets
+
+
+def generate_api_key() -> str:
+    """生成随机 API Key"""
+    return secrets.token_urlsafe(32)
+
+
+def hash_api_key(key: str) -> str:
+    """使用 SHA-256 哈希 API Key"""
+    return hashlib.sha256(key.encode()).hexdigest()
 
 
 async def get_tenant_from_api_key(api_key: str, session: AsyncSession) -> int:
@@ -37,15 +48,15 @@ async def get_tenant_from_api_key(api_key: str, session: AsyncSession) -> int:
     raise HTTPException(status_code=401, detail="Invalid API Key")
 
 
-async def init_default_tenant(session: AsyncSession) -> Tenant:
+async def init_default_tenant(session: AsyncSession) -> tuple[Tenant, str | None]:
     """
-    初始化默认租户（在系统启动时调用）
+    初始化默认租户和默认 API Key（在系统启动时调用）
 
     Args:
         session: 数据库 session
 
     Returns:
-        Tenant: 默认租户对象
+        tuple: (默认租户对象, 默认 API Key 明文 或 None 如果已存在)
     """
     result = await session.exec(
         select(Tenant).where(Tenant.slug == "default")
@@ -53,7 +64,15 @@ async def init_default_tenant(session: AsyncSession) -> Tenant:
     existing = result.one_or_none()
 
     if existing:
-        return existing
+        # 检查是否已有默认 API Key
+        key_result = await session.exec(
+            select(APIKey).where(
+                APIKey.tenant_id == existing.id,
+                APIKey.name == "default-key"
+            )
+        )
+        existing_key = key_result.one_or_none()
+        return (existing, None if existing_key else None)
 
     # 创建默认租户
     default_tenant = Tenant(
@@ -67,7 +86,19 @@ async def init_default_tenant(session: AsyncSession) -> Tenant:
     await session.commit()
     await session.refresh(default_tenant)
 
-    return default_tenant
+    # 创建默认 API Key
+    raw_key = generate_api_key()
+    default_key = APIKey(
+        name="default-key",
+        key_hash=hash_api_key(raw_key),
+        tenant_id=default_tenant.id,
+        permissions=["read", "write"],
+        is_active=True
+    )
+    session.add(default_key)
+    await session.commit()
+
+    return (default_tenant, raw_key)
 
 
 async def get_quota_usage(tenant_id: int, session: AsyncSession) -> dict:

@@ -27,6 +27,8 @@ function App() {
   const [panelContent, setPanelContent] = useState<'settings' | 'apikeys' | 'metrics'>('settings');
 
   useEffect(() => {
+    const apiKey = localStorage.getItem('api_key');
+
     fetch('/api/v1/health')
       .then(res => res.json())
       .then(data => {
@@ -39,34 +41,48 @@ function App() {
       });
 
     // Fetch task list to check for running tasks
-    fetch('/api/v1/tasks')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setTasks(data);
-          // Check for running tasks - if any, show execution view
-          const runningTask = data.find(t => t.status === 'RUNNING');
-          if (runningTask) {
-            setCurrentTaskId(runningTask.id);
-            setViewMode('execution');
-          } else if (data.length > 0) {
-            setCurrentTaskId(data[0].id);
-          }
+    if (apiKey) {
+      fetch('/api/v1/tasks', {
+        headers: {
+          'X-API-Key': apiKey
         }
       })
-      .catch(err => {
-        console.warn('Failed to fetch tasks:', err);
-      });
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setTasks(data);
+            // Check for running tasks - if any, show execution view
+            const runningTask = data.find(t => t.status === 'RUNNING');
+            if (runningTask) {
+              setCurrentTaskId(runningTask.id);
+              setViewMode('execution');
+            } else if (data.length > 0) {
+              setCurrentTaskId(data[0].id);
+            }
+          }
+        })
+        .catch(err => {
+          console.warn('Failed to fetch tasks:', err);
+        });
+    }
   }, []);
 
   // Handle task submission from SingleInputView
   const handleTaskSubmit = async (objective: string) => {
     try {
+      const apiKey = localStorage.getItem('api_key');
+      if (!apiKey) {
+        console.error('No API Key found in localStorage');
+        alert('请先创建 API Key：点击右上角 🔑 API 按钮创建');
+        return;
+      }
+
       // Create API key first if needed (simplified - use existing key)
       const response = await fetch('/api/v1/tasks', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-API-Key': apiKey,
         },
         body: JSON.stringify({
           project_id: 1, // Default project
@@ -80,9 +96,14 @@ function App() {
         setTasks(prev => [...prev, task]);
         setCurrentTaskId(task.id);
         setViewMode('execution');
+      } else {
+        const error = await response.json();
+        console.error('Failed to create task:', error);
+        alert(`创建任务失败: ${error.detail || '未知错误'}`);
       }
     } catch (err) {
       console.error('Failed to create task:', err);
+      alert('创建任务失败: 网络错误');
     }
   };
 
