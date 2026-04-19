@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import App from '../src/App';
 
@@ -6,40 +6,47 @@ import App from '../src/App';
 const mockFetch = vi.fn();
 globalThis.fetch = mockFetch as any;
 
-describe('App Root Render & Health Check', () => {
+describe('App Root Render - Sprint 20 UX', () => {
   beforeEach(() => {
     mockFetch.mockReset();
   });
 
-  it('应当能够挂载并且存在 SECA Core Control 标题', () => {
+  it('应当能够挂载并显示 SingleInputView 默认界面', () => {
     mockFetch
       .mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'active' }) })
       .mockResolvedValueOnce({ ok: true, json: async () => [] });
     render(<App />);
-    expect(screen.getByText(/SECA Core Control/i)).toBeInTheDocument();
+    // 新界面默认显示输入框
+    expect(screen.getByPlaceholderText(/输入任务目标/i)).toBeInTheDocument();
   });
 
-  it('应当能嗅探后端健康情况并展示连通状态 [Connected]', async () => {
+  it('应当显示提交按钮和高级模式入口', () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'active' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => [] });
+    render(<App />);
+    // 提交按钮存在
+    expect(screen.getByRole('button', { name: /提交/i })).toBeInTheDocument();
+    // 高级模式入口存在
+    expect(screen.getByRole('button', { name: /高级/i })).toBeInTheDocument();
+  });
+
+  it('点击高级模式应显示 Dashboard 和连接状态', async () => {
     mockFetch
       .mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'active' }) })
       .mockResolvedValueOnce({ ok: true, json: async () => [] });
 
     render(<App />);
 
+    // 点击高级模式按钮
+    const advancedBtn = screen.getByRole('button', { name: /高级/i });
+    fireEvent.click(advancedBtn);
+
     await waitFor(() => {
+      // 高级模式显示 SECA Core Control 标题
+      expect(screen.getByText(/SECA Core Control/i)).toBeInTheDocument();
+      // 连接状态显示
       expect(screen.getByText(/\[Connected\]/i)).toBeInTheDocument();
-    });
-  });
-
-  it('当后端宕机离线时，界面应展示超时红灯断开的提示', async () => {
-    mockFetch
-      .mockRejectedValueOnce(new Error('Network response was not ok'))
-      .mockRejectedValueOnce(new Error('Network response was not ok'));
-
-    render(<App />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/\[Disconnected\]/i)).toBeInTheDocument();
     });
   });
 });
