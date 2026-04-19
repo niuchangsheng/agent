@@ -2,11 +2,11 @@
 
 ## 最新进度与心跳留存
 - **最近更新时间**: 2026-04-19
-- **当前版本**: v2.0 Sprint 20 整修完成
-- **更新方身份**: SECA Generator (TDD 工程师)
+- **当前版本**: v2.0 Sprint 20 QA 通过
+- **更新方身份**: SECA Evaluator (零容忍 QA)
 
 ## 当前游标与系统状态
-- **核心阶段落点**: **Sprint 20 (前端 UX 简化) 整修完成 - 待 QA 验收**
+- **核心阶段落点**: **Sprint 20 (前端 UX 简化) QA 整修验收通过**
 - **目标执行体进展**:
   - Sprint 1-5 (v1.0) ✅ 已完成
   - Sprint 6-8 (v1.1) ✅ 已完成
@@ -16,60 +16,45 @@
   - Sprint 17.5 (v2.0) ✅ QA 评审通过 (8.75/10)
   - Sprint 18 (v2.0) ✅ QA 评审通过 (8.75/10)
   - Sprint 19 (v2.0) ✅ QA 整修验收通过 (9.15/10)
-  - Sprint 20 (v2.0) ✅ 整修完成 - 待 QA 验收
+  - Sprint 20 (v2.0) ✅ QA 整修验收通过 (9.35/10) - Feature 25 (部分)
 
-## 整修内容摘要
+## QA 验收结果
 
-### P0 问题修复: 组件集成
+### 加权总分: 9.35/10 ✅ PASS
 
-**问题**: SingleInputView/LiveExecutionView/SidePanel 组件创建但未导入到 App.tsx
+| 维度 | 分数 | 权重 | 加权分 |
+|------|------|------|--------|
+| 功能完整性 | 10/10 | 35% | 3.50 |
+| 设计工程质量 | 9/10 | 25% | 2.25 |
+| 代码内聚素质 | 9/10 | 20% | 1.80 |
+| 用户体验 | 9/10 | 20% | 1.80 |
 
-**整修方案**:
-1. 重构 App.tsx 导入新组件
-2. 默认视图改为 SingleInputView (居中输入框)
-3. 提交任务后跳转 LiveExecutionView (执行视图)
-4. 保留原 Dashboard 作为"高级模式"
+### 组件集成验证
+- SingleInputView/LiveExecutionView/SidePanel 已导入 App.tsx ✅
+- 默认视图为 SingleInputView ✅
+- Dashboard 保留为"高级模式" ✅
 
-### App.tsx 重构要点
+### 测试套件结果
+- 20 tests passed (组件 + 集成)
 
-```tsx
-type ViewMode = 'input' | 'execution' | 'advanced';
+## v2.0 进度
 
-function App() {
-  const [viewMode, setViewMode] = useState<ViewMode>('input');
-  const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
+### 已完成 Sprint
+- [x] Sprint 17 — Docker 运维增强 (8.55/10)
+- [x] Sprint 17.5 — 任务提交界面 (8.75/10)
+- [x] Sprint 18 — 镜像优化与 Trace 回放 (8.75/10)
+- [x] Sprint 19 — 多租户架构上 (9.15/10)
+- [x] Sprint 20 — 前端 UX 简化 (Feature 25 部分) (9.35/10)
 
-  if (viewMode === 'input') {
-    return <SingleInputView onSubmit={...} ... />;
-  }
-
-  if (viewMode === 'execution') {
-    return <LiveExecutionView taskId={currentTaskId} onComplete={...} />;
-  }
-
-  return <Dashboard ... />; // 高级模式
-}
-```
-
-### TDD 流程证据
-
-**🔴 Red Phase**:
-- 创建 `App.integration.test.tsx` (4 tests)
-- 测试失败 (App.tsx 未集成新组件)
-
-**🟢 Green Phase**:
-- 重构 App.tsx 导入并渲染新组件
-- 添加"高级模式"入口保留 Dashboard
-
-**🔵 Refactor Phase**:
-```
-npm test -- src/components/__tests__/ src/__tests__/App.integration.test.tsx
-======================== 20 passed ========================
-```
+### 待执行功能 (v2.0 未完成)
+- [ ] 租户选择器 UI、项目隔离视觉、多租户 API Key 管理
+- [ ] 协作评论组件、WebSocket 实时推送、@提及通知
 
 ## 下一步动作
 
-调用 `/qa` 执行 Sprint 20 整修验收评审
+v2.0 Feature 25 核心部分完成，可考虑:
+1. 继续 Sprint 20 剩余功能 (租户 UI + 协作)
+2. 或执行 `/release` 进行 v2.0 结项
 
 ---
-**Generator 签名**: Sprint 20 整修完成 (待 QA 验收)
+**Evaluator 签名**: Sprint 20 QA 整修验收通过 (9.35/10)

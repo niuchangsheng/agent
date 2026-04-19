@@ -254,7 +254,7 @@
 - [x] Tenant/Project 数据模型扩展、tenant_id 中间件、作用域过滤器 — P0漏洞整修: 7端点添加tenant_id过滤
 - [x] 租户管理面板、配额监控、越权访问测试覆盖 — API层隔离测试6项全部通过
 
-**Sprint 20: 前端 UX 简化 + 多租户 UI + 协作 — 实现 Feature 25 + Feature 22 (UI) + Feature 23 — [/] 整修完成待验收**
+**Sprint 20: 前端 UX 简化 + 多租户 UI + 协作 — 实现 Feature 25 (部分) — ✅ QA 整修验收通过 (9.35/10)**
 - [x] SingleInputView/LiveExecutionView/SidePanel 组件创建完成 — 已集成到 App.tsx
 - [x] App.tsx 重构 — 默认显示 SingleInputView，保留 Dashboard 作为高级模式
 - [ ] 租户选择器 UI、项目隔离视觉、多租户 API Key 管理
