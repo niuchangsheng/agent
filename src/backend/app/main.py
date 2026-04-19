@@ -324,7 +324,12 @@ async def create_task(
     api_key: APIKey = Depends(require_write_key)
 ):
     """创建任务 - 需要写权限，自动加入队列"""
-    db_task = Task(project_id=task_in.project_id, raw_objective=task_in.raw_objective, priority=task_in.priority)
+    db_task = Task(
+        project_id=task_in.project_id,
+        raw_objective=task_in.raw_objective,
+        priority=task_in.priority,
+        tenant_id=api_key.tenant_id  # Sprint 19: 使用 API Key 的 tenant_id
+    )
     session.add(db_task)
     await session.commit()
     await session.refresh(db_task)
