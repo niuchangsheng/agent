@@ -2,11 +2,11 @@
 
 ## 最新进度与心跳留存
 - **最近更新时间**: 2026-04-19
-- **当前版本**: v2.0 Sprint 19 整修完成
-- **更新方身份**: SECA Generator (TDD 工程师)
+- **当前版本**: v2.0 Sprint 19 QA 通过
+- **更新方身份**: SECA Evaluator (零容忍 QA)
 
 ## 当前游标与系统状态
-- **核心阶段落点**: **Sprint 19 (多租户架构上) P0 安全漏洞整修完成**
+- **核心阶段落点**: **Sprint 19 (多租户架构上) QA 整修验收通过**
 - **目标执行体进展**:
   - Sprint 1-5 (v1.0) ✅ 已完成
   - Sprint 6-8 (v1.1) ✅ 已完成
@@ -15,48 +15,48 @@
   - Sprint 17 (v2.0) ✅ QA 复审通过 (8.55/10)
   - Sprint 17.5 (v2.0) ✅ QA 评审通过 (8.75/10)
   - Sprint 18 (v2.0) ✅ QA 评审通过 (8.75/10)
-  - Sprint 19 (v2.0) ✅ 整修完成 - 待 QA 验收
+  - Sprint 19 (v2.0) ✅ QA 整修验收通过 (9.15/10)
 
-## 整修内容摘要
+## QA 验收结果
 
-### P0 安全漏洞修复
-**修复了多个 API 端点缺少 tenant_id 过滤导致跨租户数据泄露的问题**
+### 加权总分: 9.15/10 ✅ PASS
 
-### 整改端点清单
+| 维度 | 分数 | 权重 | 加权分 |
+|------|------|------|--------|
+| 功能完整性 | 10/10 | 35% | 3.50 |
+| 设计工程质量 | 9/10 | 25% | 2.25 |
+| 代码内聚素质 | 9/10 | 20% | 1.80 |
+| 用户体验 | 8/10 | 20% | 1.60 |
 
-| # | 端点 | 整改内容 |
-|---|------|----------|
-| 1 | `/api/v1/projects` | 添加 `require_read_key` + `.where(Project.tenant_id == api_key.tenant_id)` |
-| 2 | `/api/v1/tasks` | 添加 `require_read_key` + `.where(Task.tenant_id == api_key.tenant_id)` |
-| 3 | `/api/v1/tasks/{id}/dag-tree` | 添加 `require_read_key` + Task/Trace tenant_id 过滤 |
-| 4 | `/api/v1/tasks/{id}/generate-adr` | Task 查询添加 tenant_id 过滤 + 403 越权拒绝 |
-| 5 | `/api/v1/containers` | Task 查询添加 `.where(Task.tenant_id == api_key.tenant_id)` |
-| 6 | `/api/v1/containers/history` | Task 查询添加 tenant_id 过滤 |
-| 7 | `/api/v1/tasks/{id}/logs` | Task/Trace 查询添加 tenant_id 过滤 + 403 越权拒绝 |
+### API 层隔离测试结果
 
-### 新增测试文件
-- `src/backend/tests/test_api_tenant_isolation.py` - 6 个 API 层隔离测试
+| TC-ID | 端点 | 状态 |
+|-------|------|------|
+| API-001 | `/api/v1/projects` | ✅ PASS |
+| API-002 | `/api/v1/tasks` | ✅ PASS |
+| API-003 | `/api/v1/tasks/1/dag-tree` | ✅ PASS |
+| API-004 | `/api/v1/tasks/1/generate-adr` | ✅ PASS (403) |
+| API-005 | `/api/v1/containers` | ✅ PASS |
+| API-006 | `/api/v1/tasks/1/logs` | ✅ PASS (403) |
 
-### TDD 流程证据
+### 测试套件结果
+- 25 tenant isolation tests: ✅ 全部通过
+- 166 passed, 9 skipped, 2 failed (非安全相关)
 
-**🔴 Red Phase (测试先行)**:
-```
-pytest tests/test_api_tenant_isolation.py -v
-5 failed, 1 passed - 安全漏洞暴露
-```
+## v2.0 进度
 
-**🟢 Green Phase (最少实现)**:
-修复 7 个 API 端点，添加 tenant_id 过滤
+### 已完成 Sprint
+- [x] Sprint 17 — Docker 运维增强 (8.55/10)
+- [x] Sprint 17.5 — 任务提交界面 (8.75/10)
+- [x] Sprint 18 — 镜像优化与 Trace 回放 (8.75/10)
+- [x] Sprint 19 — 多租户架构上 (9.15/10)
 
-**🔵 Refactor Phase (回归验证)**:
-```
-pytest tests/test_api_tenant_isolation.py tests/test_tenant.py tests/test_tenant_isolation.py tests/test_apikey_tenant.py -v
-25 passed - 整修完成
-```
+### 待执行 Sprint
+- [ ] Sprint 20 — 前端 UX 简化 + 协作
 
 ## 下一步动作
 
-调用 `/qa` 执行 Sprint 19 整修验收评审
+调用 `/build` 执行 Sprint 20 开发
 
 ---
-**Generator 签名**: Sprint 19 P0 安全漏洞整修完成 (待 QA 验收)
+**Evaluator 签名**: Sprint 19 QA 整修验收通过 (9.15/10)

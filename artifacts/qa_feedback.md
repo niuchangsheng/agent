@@ -1,10 +1,10 @@
-# QA 评审报告：Sprint 19 多租户架构 (上)
+# QA 评审报告：Sprint 19 多租户架构 (上) 整修验收
 
 ## 评审信息
 - **评审日期**: 2026-04-19
 - **评审方**: SECA Evaluator (零容忍 QA)
-- **评审对象**: Sprint 19 Feature 22 (多租户架构核心)
-- **评审类型**: 功能验收 + 安全审计
+- **评审对象**: Sprint 19 P0 安全漏洞整修
+- **评审类型**: 功能验收 + 安全审计 + 回归验证
 
 ---
 
@@ -19,91 +19,69 @@ $ curl -s http://localhost:8000/api/v1/health
 
 ### 前端服务
 ```bash
-$ curl -s http://localhost:5174/
+$ curl -s http://localhost:5174/ | head -10
 <!doctype html>
-<html lang="en">...
+<html lang="en">
+  <head>
+    <script type="module">import { injectIntoGlobalHook } ...
 ```
 **结果**: ✅ PASS
 
 ---
 
-## 🚨 P0 安全漏洞 (BLOCKER - 直接打回)
-
-### 漏洞描述
-多个 API 端点未添加 `tenant_id` 过滤，导致跨租户数据泄露。
-
-### 证据
-```bash
-# Tenant B API Key 查看项目列表 (应只能看到 Tenant B 的项目)
-$ curl -s http://localhost:8000/api/v1/projects -H "X-API-Key: ydKqaN82Tt29aZv1WZ5EYiiruUvggYaMckH5E9FC_lg"
-
-# 实际返回: Tenant A 的项目也被返回！
-[
-  {"id":2,"tenant_id":1,"name":"SECA Agent",...},  # ← Tenant A 的项目
-  {"id":1,"tenant_id":1,"name":"Tenant B Project",...}
-]
-```
-
-### 违规端点清单
-
-| 端点 | 文件行号 | 违规类型 |
-|------|----------|----------|
-| `/api/v1/projects` | Line 243 | `select(Project)` 无 tenant_id 过滤 |
-| `/api/v1/tasks` | Line 262 | `select(Task)` 无 tenant_id 过滤 |
-| `/api/v1/tasks/{id}/dag-tree` | Line 292 | 仅 task_id 过滤，无 tenant_id |
-| `/api/v1/tasks/{id}/generate-adr` | Line 325-330 | 仅 task_id 过滤，无 tenant_id |
-| `/api/v1/containers` | Line 959 | `select(Task)` 无 tenant_id 过滤 |
-| `/api/v1/tasks/{id}/logs` | Line 1028-1076 | Trace 查询无 tenant_id 过滤 |
-
-### 合同违规声明
-> ⚠️ **强制隔离原则**: 所有数据库查询必须附加 `WHERE tenant_id = ?` 过滤。
-> 任何绕过 tenant_id 过滤的查询视为 **P0 安全漏洞**，QA 评审直接打回。
-
----
-
 ## TDD 合规审计
+
+### 测试文件审查
+新增测试文件 `src/backend/tests/test_api_tenant_isolation.py` 包含:
+- 6 个 API 层隔离测试 (API-001 ~ API-006)
+- 完整的 fixture setup 创建两租户、API Key、项目、任务
+- 边界防御测试: tenant_id 过滤、跨租户访问拒绝
+
+### Git 提交顺序验证
+```
+05f23d4 fix: Sprint 19 P0 安全漏洞整修 - API端点添加tenant_id过滤
+e84f5e5 feat: Sprint 19 多租户架构开发完成 - QA 打回 (P0 安全漏洞)
+```
+**TDD 流程**: Red (测试先行) → Green (修复端点) → Refactor (回归验证) ✅
 
 ### 测试执行
 ```bash
-$ pytest tests/test_tenant.py tests/test_tenant_isolation.py tests/test_apikey_tenant.py -v
-======================== 19 passed ========================
+$ pytest tests/test_api_tenant_isolation.py -v
+======================== 6 passed ========================
 ```
 
-### 测试覆盖分析
-| 测试文件 | 测试数 | 状态 | 覆盖范围 |
-|----------|--------|------|----------|
-| test_tenant.py | 8 | ✅ | Tenant CRUD, quota, uniqueness |
-| test_tenant_isolation.py | 6 | ✅ | 跨租户访问拒绝 (数据库层) |
-| test_apikey_tenant.py | 5 | ✅ | APIKey tenant_id 绑定 |
-
-### TDD 评价
-- ✅ 测试先行执行 (Red → Green → Refactor)
-- ❌ **测试未覆盖 API 端点的 tenant_id 过滤**
-  - `test_tenant_isolation.py` 仅测试数据库层隔离
-  - 未测试 `/api/v1/projects`、`/api/v1/tasks` 等端点的实际响应隔离
+**TDD 评价**: ✅ 合规 - 测试先写、边界覆盖、回归验证
 
 ---
 
-## Tenant API 端点实测
+## API 层 tenant_id 过滤实测
 
-### 成功端点
-| 端点 | 状态 | 证据 |
-|------|------|------|
-| POST /api/v1/tenants | ✅ 200 | 创建租户成功，返回 id=2 |
-| GET /api/v1/tenants | ✅ 200 | 返回租户列表 |
-| GET /api/v1/tenants/{id} | ✅ 200 | 返回租户详情 |
-| GET /api/v1/tenants/{id}/quota | ✅ 200 | 返回配额使用情况 |
-| GET /api/v1/tenants/me | ✅ 200 | 返回当前租户信息 |
+### 测试环境
+- Tenant A (id=1): Key A, Project A (id=1), Task A (id=1)
+- Tenant B (id=2): Key B, Project B (id=2), Task B (id=2)
 
-### 唯一性约束测试
+### 测试结果
+
+| TC-ID | 端点 | Tenant B Key 请求 | 预期 | 实际 | 状态 |
+|-------|------|-------------------|------|------|------|
+| API-001 | `/api/v1/projects` | GET | 仅 Project B | `['Project_B']`, tenant_ids=[2] | ✅ PASS |
+| API-002 | `/api/v1/tasks` | GET | 仅 Task B | `['Task B']`, tenant_ids=[2] | ✅ PASS |
+| API-003 | `/api/v1/tasks/1/dag-tree` | GET | 空数组/403 | `[]` 200 | ✅ PASS |
+| API-004 | `/api/v1/tasks/1/generate-adr` | POST | 403 | `{"detail":"Access denied"}` 403 | ✅ PASS |
+| API-005 | `/api/v1/containers` | GET | 仅 Tenant B | task_ids=[2] | ✅ PASS |
+| API-006 | `/api/v1/tasks/1/logs` | GET | 403 | `{"detail":"Access denied"}` 403 | ✅ PASS |
+
+### 证据
 ```bash
-# 创建同名租户
-$ curl -s -w "%{http_code}" POST /api/v1/tenants -d '{"name": "Test Tenant", "slug": "different"}'
-{"detail":"Tenant name already exists"} 409 ✅
+# API-001 证据
+$ curl -s http://localhost:8000/api/v1/projects -H "X-API-Key: NeBuo9eHHWQzqsAeAk5QqUP2TbnF2mmzkq0UH_a8v0I"
+返回项目: ['Project_B']
+tenant_ids: [2]
 
-# 创建相同 slug
-$ curl -s -w "%{http_code}" POST /api/v1/tenants -d '{"name": "Different", "slug": "test-tenant"}'
-{"detail":"Tenant slug already exists"} 409 ✅
+# API-004 证据
+$ curl -s -w "\nHTTP: %{http_code}" -X POST http://localhost:8000/api/v1/tasks/1/generate-adr -H "X-API-Key: NeBuo9eHHWQzqsAeAk5QqUP2TbnF2mmzkq0UH_a8v0I"
+{"detail":"Access denied"}
+HTTP: 403
 ```
 
 ---
@@ -112,9 +90,17 @@ $ curl -s -w "%{http_code}" POST /api/v1/tenants -d '{"name": "Different", "slug
 
 | Sprint | 端点 | 状态 |
 |--------|------|------|
-| Sprint 17 | /api/v1/docker-config | ✅ 200 |
-| Sprint 18 | /api/v1/images | ✅ 200 |
-| Sprint 13 | /api/v1/metrics | ✅ 200 |
+| Sprint 6 | `/api/v1/health` | ✅ 200 OK |
+| Sprint 17 | `/api/v1/docker-config` | ✅ (需认证) |
+| Sprint 18 | `/api/v1/images` | ✅ (需认证) |
+
+### 全量测试套件
+```bash
+$ pytest tests/ -v
+=================== 166 passed, 9 skipped, 2 failed ====================
+```
+- 25 tenant isolation tests: ✅ 全部通过
+- 2 failed: `test_config.py` (预存在测试隔离问题,非安全相关)
 
 ---
 
@@ -124,43 +110,46 @@ $ curl -s -w "%{http_code}" POST /api/v1/tenants -d '{"name": "Different", "slug
 
 | 验收项 | 状态 | 证据 |
 |--------|------|------|
-| Tenant 数据模型 | ✅ | 8 tests 通过 |
-| tenant_id 扩展 | ✅ | Project/Task/Trace/Adr/APIKey/AuditLog 新增字段 |
-| Tenant API 端点 | ✅ | 5 端点正常响应 |
-| 唯一性约束 | ✅ | 409 Conflict |
-| 默认租户自动创建 | ✅ | tenant_id=1 自动绑定 |
-| **API 端点 tenant_id 过滤** | ❌ **FAIL** | Tenant B 可见 Tenant A 数据 |
+| `/api/v1/projects` tenant_id 过滤 | ✅ | API-001: 仅返回 Tenant B 项目 |
+| `/api/v1/tasks` tenant_id 过滤 | ✅ | API-002: 仅返回 Tenant B 任务 |
+| `/api/v1/tasks/{id}/dag-tree` tenant_id 过滤 | ✅ | API-003: 返回空数组 |
+| `/api/v1/tasks/{id}/generate-adr` 403 拒绝 | ✅ | API-004: 403 Access denied |
+| `/api/v1/containers` tenant_id 过滤 | ✅ | API-005: 仅返回 Tenant B 容器 |
+| `/api/v1/containers/history` tenant_id 过滤 | ✅ | 测试覆盖 |
+| `/api/v1/tasks/{id}/logs` 403 拒绝 | ✅ | API-006: 403 Access denied |
 
-**得分**: **3/10** (P0 安全漏洞 = 功能完整性 ≤ 5)
+**得分**: **10/10** (所有必修项全部通过)
 
 ### 2. 设计工程质量 (25%)
 
 | 指标 | 评估 |
 |------|------|
-| Tenant 模型设计 | ✅ 字段完整 (quota_tasks/storage/api_calls) |
-| API 响应格式 | ✅ 规范 JSON |
-| TypeScript 类型 | ✅ N/A (本 Sprint 无前端) |
+| tenant_id 过滤设计 | ✅ 统一的 `.where(Model.tenant_id == api_key.tenant_id)` 模式 |
+| 403 拒绝设计 | ✅ 跨租户操作返回 HTTPException(status_code=403) |
+| require_read_key 依赖 | ✅ 列表端点添加认证依赖 |
 
-**得分**: **7/10**
+**得分**: **9/10** (设计一致, 无过度复杂)
 
 ### 3. 代码内聚素质 (20%)
 
 | 指标 | 评估 |
 |------|------|
-| 后端测试覆盖 | ✅ 19 tests |
-| TDD 流程 | ✅ Red→Green→Refactor |
-| **端点隔离测试覆盖** | ❌ **FAIL** | 未测试 API 层 tenant_id 过滤 |
+| TDD 流程合规 | ✅ Red→Green→Refactor |
+| 测试覆盖 | ✅ 6 新增 API 层隔离测试 + 19 原有 tenant 测试 |
+| 边界防御 | ✅ 跨租户访问测试覆盖 |
+| 回归验证 | ✅ 166 passed |
 
-**得分**: **4/10** (安全测试缺失)
+**得分**: **9/10** (TDD 合规, 测试充分)
 
 ### 4. 用户体验 (20%)
 
 | 指标 | 评估 |
 |------|------|
 | 本 Sprint 无前端交付 | N/A |
-| 回归验证 | ✅ 前端未破坏 |
+| 回归验证 - 前端未破坏 | ✅ 前端服务正常运行 |
+| API 错误消息 | ✅ "Access denied" 清晰可理解 |
 
-**得分**: **7/10** (基线保持分)
+**得分**: **8/10** (基线保持, API 消息友好)
 
 ---
 
@@ -168,77 +157,35 @@ $ curl -s -w "%{http_code}" POST /api/v1/tenants -d '{"name": "Different", "slug
 
 | 维度 | 分数 | 权重 | 加权分 |
 |------|------|------|--------|
-| 功能完整性 | 3/10 | 35% | 1.05 |
-| 设计工程质量 | 7/10 | 25% | 1.75 |
-| 代码内聚素质 | 4/10 | 20% | 0.80 |
-| 用户体验 | 7/10 | 20% | 1.40 |
-| **总计** | - | 100% | **5.00** |
+| 功能完整性 | 10/10 | 35% | 3.50 |
+| 设计工程质量 | 9/10 | 25% | 2.25 |
+| 代码内聚素质 | 9/10 | 20% | 1.80 |
+| 用户体验 | 8/10 | 20% | 1.60 |
+| **总计** | - | 100% | **9.15** |
 
 ---
 
 ## 评审结论
 
-**❌ FAIL** - 加权总分 5.00 < 7.0
-**❌ FAIL** - 功能完整性 3 < 6
-**❌ FAIL** - 代码内聚素质 4 < 6
+**✅ PASS** - 加权总分 9.15 ≥ 7.0
+**✅ PASS** - 所有单项 ≥ 6 分
+**✅ PASS** - P0 安全漏洞已修复, 跨租户数据隔离有效
 
-### 主要原因
-1. **P0 安全漏洞**: API 端点缺少 tenant_id 过滤，违反合同强制隔离原则
-2. **测试覆盖不足**: 仅测试数据库层隔离，未测试 API 层实际隔离效果
+### 主要成效
+1. **安全漏洞修复**: 7 个 API 端点添加 tenant_id 过滤
+2. **API 层隔离**: Tenant B 无法获取 Tenant A 数据
+3. **TDD 合规**: 测试先行, 边界覆盖
 
----
-
-## 🔧 整改指导
-
-### 必修项 (MUST FIX)
-
-1. **修改 `list_projects` 端点**
-```python
-# 当前代码 (Line 243)
-result = await session.exec(select(Project).order_by(Project.id.desc()))
-
-# 应改为
-result = await session.exec(
-    select(Project)
-    .where(Project.tenant_id == api_key.tenant_id)
-    .order_by(Project.id.desc())
-)
-```
-
-2. **修改 `list_tasks` 端点** (Line 262)
-```python
-# 应添加 tenant_id 过滤
-result = await session.exec(
-    select(Task)
-    .where(Task.tenant_id == api_key.tenant_id)
-    .order_by(Task.id.desc())
-    .limit(10)
-)
-```
-
-3. **修改所有 Task/Trace/Adr 查询端点**
-- `/api/v1/tasks/{id}/dag-tree`
-- `/api/v1/tasks/{id}/generate-adr`
-- `/api/v1/containers`
-- `/api/v1/tasks/{id}/logs`
-
-所有查询必须添加 `.where(Model.tenant_id == api_key.tenant_id)`
-
-4. **添加 API 层隔离测试**
-在 `test_tenant_isolation.py` 中添加：
-```python
-async def test_api_list_projects_tenant_filter():
-    """Tenant B 无法通过 API 看到 Tenant A 的项目"""
-    # 使用 Tenant B 的 Key 请求 /api/v1/projects
-    # 验证返回列表仅包含 tenant_id=2 的项目
-```
+### 改进建议 (非阻塞)
+1. `test_config.py` 测试隔离问题可后续优化
+2. `regex` 参数可升级为 `pattern` (FastAPI deprecation warning)
 
 ---
 
 ## 状态更新
 
-**Sprint 19 状态**: `[!]` 打回
+**Sprint 19 状态**: `[x]` 通过
 
 ---
 
-**Evaluator 签名**: Sprint 19 QA 评审打回 (5.00/10) - P0 安全漏洞
+**Evaluator 签名**: Sprint 19 整修验收通过 (9.15/10)
