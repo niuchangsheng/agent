@@ -254,13 +254,13 @@
 - [x] Tenant/Project 数据模型扩展、tenant_id 中间件、作用域过滤器 — P0漏洞整修: 7端点添加tenant_id过滤
 - [x] 租户管理面板、配额监控、越权访问测试覆盖 — API层隔离测试6项全部通过
 
-**Sprint 20: 前端 UX 简化 + 多租户 UI + 协作 — 实现 Feature 25 + Feature 22 (UI) + Feature 23**
-- [ ] SingleInputView 主界面组件（居中输入框、提交按钮、右上角辅助入口）
-- [ ] LiveExecutionView 执行视图（流式 Trace 展示、状态指示、新任务按钮）
-- [ ] 侧边配置面板（⚙️/🔑/📊 触发，不遮挡主视图）
+**Sprint 20: 前端 UX 简化 + 多租户 UI + 协作 — 实现 Feature 25 + Feature 22 (UI) + Feature 23 — [/] 进行中**
+- [/] SingleInputView 主界面组件（居中输入框、提交按钮、右上角辅助入口）
+- [/] LiveExecutionView 执行视图（流式 Trace 展示、状态指示、新任务按钮）
+- [/] 侧边配置面板（⚙️/🔑/📊 触发，不遮挡主视图）
 - [ ] 租户选择器 UI、项目隔离视觉、多租户 API Key 管理
 - [ ] 协作评论组件、WebSocket 实时推送、@提及通知
-- [ ] 前端单元测试覆盖（交互状态切换、自动跳转逻辑）
+- [/] 前端单元测试覆盖（交互状态切换、自动跳转逻辑）
 
 ## 整体项目竣工结项标准 (Definition of Done)
 
