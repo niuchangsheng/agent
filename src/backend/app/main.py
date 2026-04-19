@@ -22,11 +22,17 @@ from app.metrics import MetricsCollector, check_thresholds
 from app.tenant import init_default_tenant, get_quota_usage, check_quota_limit
 # Sprint 9: 导入新队列模块
 from app.queue import create_queue, BaseQueue
+# Sprint 20: 导入 Worker 模块
+from app.worker import WorkerManager, SSEBroadcaster, init_sse_broadcaster, get_sse_broadcaster
 
 logger = logging.getLogger(__name__)
 
 # 全局队列实例（Sprint 9）
 global_queue: BaseQueue = None
+# 全局 Worker Manager（Sprint 20）
+global_worker_manager: WorkerManager = None
+# 全局 SSE 广播器（Sprint 20）
+global_sse_broadcaster: SSEBroadcaster = None
 
 def get_ip_address(request: Request) -> str:
     """获取请求 IP 地址（支持 X-Forwarded-For）"""
@@ -109,7 +115,7 @@ class APIKeyResponse(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    global global_queue
+    global global_queue, global_worker_manager, global_sse_broadcaster
 
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
@@ -139,9 +145,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         global_queue = InMemoryQueue(max_concurrent=2)
         logger.info("In-memory queue initialized")
 
+    # Sprint 20: 初始化 SSE 广播器和 Worker Manager
+    global_sse_broadcaster = init_sse_broadcaster()
+    max_concurrent_workers = int(os.getenv("MAX_CONCURRENT_WORKERS", "2"))
+    global_worker_manager = WorkerManager(
+        queue=global_queue,
+        max_concurrent=max_concurrent_workers,
+        poll_interval=1.0,
+        sse_broadcaster=global_sse_broadcaster
+    )
+    await global_worker_manager.start()
+    logger.info(f"Worker Manager started with {max_concurrent_workers} concurrent workers")
+
     yield
 
-    # 清理
+    # 清理: 停止 Worker Manager
+    if global_worker_manager:
+        await global_worker_manager.stop()
+        logger.info("Worker Manager stopped")
+
+    # 清理队列
     if global_queue and hasattr(global_queue, 'close'):
         await global_queue.close()
 
@@ -238,6 +261,21 @@ async def _save_audit_log(
 async def health_check():
     return {"status": "active"}
 
+@app.get("/api/v1/workers/status")
+async def get_workers_status():
+    """获取 Worker Manager 状态 - Sprint 20"""
+    if global_worker_manager:
+        return await global_worker_manager.get_status()
+    return {"running": False, "error": "Worker Manager not initialized"}
+
+@app.get("/api/v1/sse/status")
+async def get_sse_status():
+    """获取 SSE 广播器状态 - Sprint 20"""
+    broadcaster = get_sse_broadcaster()
+    if broadcaster:
+        return await broadcaster.get_status()
+    return {"active": False, "error": "SSE Broadcaster not initialized"}
+
 @app.get("/api/v1/projects")
 async def list_projects(
     session: AsyncSession = Depends(get_db_session),
@@ -302,14 +340,32 @@ async def create_task(
 
 @app.get("/api/v1/tasks/{task_id}/stream")
 async def stream_task_events(task_id: int):
-    async def event_generator():
-        # Yield an initial heartbeat or status payload
-        yield f"data: {{\"type\": \"status\", \"content\": \"Connected to stream for {task_id}\"}}\n\n"
-        # Simulate agent execution flow for testing
-        await asyncio.sleep(0.1)
-        yield f"data: {{\"type\": \"perception\", \"content\": \"Started analysis...\"}}\n\n"
+    """SSE 实时事件流 - Sprint 20 真实实现"""
+    broadcaster = get_sse_broadcaster()
+    if not broadcaster:
+        # 降级：返回 mock 流
+        async def mock_generator():
+            yield f"event: error\ndata: {{\"message\": \"SSE broadcaster not initialized\"}}\n\n"
+        return StreamingResponse(mock_generator(), media_type="text/event-stream")
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    connection = await broadcaster.subscribe(task_id)
+
+    async def event_generator():
+        try:
+            for event_str in broadcaster.generate_stream(connection):
+                yield event_str
+        finally:
+            await broadcaster.unsubscribe(connection)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 @app.get("/api/v1/tasks/{task_id}/dag-tree")
 async def get_task_dag_tree(

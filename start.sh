@@ -34,6 +34,43 @@ log_error() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="${SCRIPT_DIR}/src/backend"
 FRONTEND_DIR="${SCRIPT_DIR}/src/frontend"
+CLAUDE_SETTINGS="${HOME}/.claude/settings.json"
+
+# 从 ~/.claude/settings.json 读取环境变量
+load_claude_settings() {
+    if [ -f "${CLAUDE_SETTINGS}" ]; then
+        log_info "加载 Claude 配置: ${CLAUDE_SETTINGS}"
+
+        # 使用 Python 解析 JSON（更可靠）
+        if command -v python3 &> /dev/null; then
+            ENV_VARS=$(python3 -c "
+import json
+import sys
+try:
+    with open('${CLAUDE_SETTINGS}', 'r') as f:
+        config = json.load(f)
+    env = config.get('env', {})
+    for key, value in env.items():
+        print(f'{key}={value}')
+except Exception as e:
+    sys.exit(0)
+" 2>/dev/null)
+
+            if [ -n "${ENV_VARS}" ]; then
+                while IFS= read -r line; do
+                    if [ -n "${line}" ]; then
+                        export "${line}"
+                        log_info "  设置环境变量: ${line%%=*}"
+                    fi
+                done <<< "${ENV_VARS}"
+            fi
+        else
+            log_warning "Python3 不可用，无法解析 settings.json"
+        fi
+    else
+        log_info "未找到 Claude 配置文件，使用默认配置"
+    fi
+}
 
 # 检查端口是否可用
 check_port_available() {
@@ -140,6 +177,9 @@ start_backend() {
 
     source "${BACKEND_DIR}/venv/bin/activate"
     cd "${BACKEND_DIR}"
+
+    # 加载 Claude API 配置
+    load_claude_settings
 
     # 检查依赖
     pip install -q fastapi uvicorn sqlmodel 2>/dev/null || true
