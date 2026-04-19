@@ -239,9 +239,16 @@ async def health_check():
     return {"status": "active"}
 
 @app.get("/api/v1/projects")
-async def list_projects(session: AsyncSession = Depends(get_db_session)):
-    """列出所有项目"""
-    result = await session.exec(select(Project).order_by(Project.id.desc()))
+async def list_projects(
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_read_key)
+):
+    """列出所有项目 - 按租户隔离"""
+    result = await session.exec(
+        select(Project)
+        .where(Project.tenant_id == api_key.tenant_id)
+        .order_by(Project.id.desc())
+    )
     return result.all()
 
 @app.post("/api/v1/projects")
@@ -259,8 +266,17 @@ async def create_project(
     return db_proj
 
 @app.get("/api/v1/tasks")
-async def list_tasks(session: AsyncSession = Depends(get_db_session)):
-    result = await session.exec(select(Task).order_by(Task.id.desc()).limit(10))
+async def list_tasks(
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_read_key)
+):
+    """列出任务 - 按租户隔离"""
+    result = await session.exec(
+        select(Task)
+        .where(Task.tenant_id == api_key.tenant_id)
+        .order_by(Task.id.desc())
+        .limit(10)
+    )
     return result.all()
 
 @app.post("/api/v1/tasks")
@@ -296,9 +312,25 @@ async def stream_task_events(task_id: int):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @app.get("/api/v1/tasks/{task_id}/dag-tree")
-async def get_task_dag_tree(task_id: int, session: AsyncSession = Depends(get_db_session)):
+async def get_task_dag_tree(
+    task_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    api_key: APIKey = Depends(require_read_key)
+):
+    """获取任务 DAG 树 - 按租户隔离"""
     from app.models import Trace
-    result = await session.exec(select(Trace).where(Trace.task_id == task_id))
+
+    # 先验证任务归属
+    task_result = await session.exec(
+        select(Task).where(Task.id == task_id, Task.tenant_id == api_key.tenant_id)
+    )
+    task = task_result.one_or_none()
+    if not task:
+        return JSONResponse(content=[], status_code=200)
+
+    result = await session.exec(
+        select(Trace).where(Trace.task_id == task_id, Trace.tenant_id == api_key.tenant_id)
+    )
     traces = result.all()
     
     if not traces:
@@ -327,16 +359,20 @@ async def generate_task_adr(
     session: AsyncSession = Depends(get_db_session),
     api_key: APIKey = Depends(require_write_key)
 ):
-    """生成 ADR - 需要写权限"""
+    """生成 ADR - 需要写权限，按租户隔离"""
     import os
     from app.models import Trace, Task, Adr
 
-    task_result = await session.exec(select(Task).where(Task.id == task_id))
+    task_result = await session.exec(
+        select(Task).where(Task.id == task_id, Task.tenant_id == api_key.tenant_id)
+    )
     task = task_result.one_or_none()
     if not task:
-        return JSONResponse(status_code=404, content={"detail": "Task missing"})
+        raise HTTPException(status_code=403, detail="Access denied")
 
-    trace_result = await session.exec(select(Trace).where(Trace.task_id == task_id))
+    trace_result = await session.exec(
+        select(Trace).where(Trace.task_id == task_id, Trace.tenant_id == api_key.tenant_id)
+    )
     traces = trace_result.all()
     
     # We only care about passes for generating "learned" solution ADR, 
@@ -962,10 +998,12 @@ async def list_containers(
     session: AsyncSession = Depends(get_db_session),
     api_key: APIKey = Depends(require_write_key)
 ):
-    """获取运行中容器列表"""
-    # 查询 RUNNING 状态的任务
+    """获取运行中容器列表 - 按租户隔离"""
+    # 查询 RUNNING 状态的任务，过滤租户
     result = await session.exec(
-        select(Task).where(Task.status == "RUNNING").order_by(Task.id.desc())
+        select(Task)
+        .where(Task.status == "RUNNING", Task.tenant_id == api_key.tenant_id)
+        .order_by(Task.id.desc())
     )
     tasks = result.all()
 
@@ -1031,11 +1069,14 @@ async def get_container_history(
     session: AsyncSession = Depends(get_db_session),
     api_key: APIKey = Depends(require_write_key)
 ):
-    """获取历史容器统计"""
-    # 查询已完成或失败的任务
+    """获取历史容器统计 - 按租户隔离"""
+    # 查询已完成或失败的任务，过滤租户
     result = await session.exec(
         select(Task)
-        .where(Task.status.in_(["COMPLETED", "FAILED", "CANCELLED"]))
+        .where(
+            Task.status.in_(["COMPLETED", "FAILED", "CANCELLED"]),
+            Task.tenant_id == api_key.tenant_id
+        )
         .order_by(Task.completed_at.desc())
         .limit(20)
     )
@@ -1074,15 +1115,21 @@ async def get_task_logs(
     session: AsyncSession = Depends(get_db_session),
     api_key: APIKey = Depends(require_write_key)
 ):
-    """获取任务日志"""
-    task = await session.get(Task, task_id)
+    """获取任务日志 - 按租户隔离"""
+    # 先验证任务归属租户
+    task_result = await session.exec(
+        select(Task).where(Task.id == task_id, Task.tenant_id == api_key.tenant_id)
+    )
+    task = task_result.one_or_none()
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=403, detail="Access denied")
 
-    # 获取任务的 Trace 日志
+    # 获取任务的 Trace 日志，过滤租户
     from app.models import Trace
     result = await session.exec(
-        select(Trace).where(Trace.task_id == task_id).order_by(Trace.id.desc())
+        select(Trace)
+        .where(Trace.task_id == task_id, Trace.tenant_id == api_key.tenant_id)
+        .order_by(Trace.id.desc())
     )
     traces = result.all()
 

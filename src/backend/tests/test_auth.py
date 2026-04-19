@@ -3,27 +3,26 @@ from httpx import AsyncClient
 from app.models import Project, Task
 from app.main import app
 import hashlib
-import bcrypt
 
 
-class TestBcryptHash:
-    """Sprint 10: bcrypt 哈希测试套件"""
+class TestSHA256Hash:
+    """Sprint 10: SHA-256 哈希测试套件"""
 
-    def test_bcrypt_hash_produces_different_hashes_for_same_input(self):
-        """Red 路径：bcrypt 随机盐产生不同哈希"""
+    def test_sha256_hash_produces_same_hashes_for_same_input(self):
+        """Green 路径：SHA-256 相同输入产生相同哈希"""
         from app.auth import hash_api_key
 
-        # 同一输入应产生不同哈希（因为随机盐）
+        # 同一输入应产生相同哈希（确定性）
         hash1 = hash_api_key("test-key-123")
         hash2 = hash_api_key("test-key-123")
 
-        # bcrypt 使用随机盐，所以哈希应该不同
-        assert hash1 != hash2, "bcrypt 应为相同输入产生不同哈希（随机盐）"
-        assert len(hash1) == 60, "bcrypt 哈希长度应为 60 字符"
-        assert len(hash2) == 60, "bcrypt 哈希长度应为 60 字符"
+        # SHA-256 是确定性的，所以哈希应该相同
+        assert hash1 == hash2, "SHA-256 应为相同输入产生相同哈希（确定性）"
+        assert len(hash1) == 64, "SHA-256 哈希长度应为 64 字符"
+        assert len(hash2) == 64, "SHA-256 哈希长度应为 64 字符"
 
-    def test_bcrypt_verify_valid_key(self):
-        """Green 路径：bcrypt 验证有效 Key"""
+    def test_sha256_verify_valid_key(self):
+        """Green 路径：SHA-256 验证有效 Key"""
         from app.auth import hash_api_key, verify_api_key
 
         # 生成哈希
@@ -33,8 +32,8 @@ class TestBcryptHash:
         # 验证应成功
         assert verify_api_key(key, key_hash) is True, "有效 Key 应验证成功"
 
-    def test_bcrypt_verify_invalid_key(self):
-        """Red 路径：bcrypt 拒绝无效 Key"""
+    def test_sha256_verify_invalid_key(self):
+        """Red 路径：SHA-256 拒绝无效 Key"""
         from app.auth import hash_api_key, verify_api_key
 
         # 生成哈希
@@ -44,13 +43,14 @@ class TestBcryptHash:
         # 使用错误 Key 验证应失败
         assert verify_api_key("wrong-key", key_hash) is False, "无效 Key 应验证失败"
 
-    def test_bcrypt_hash_length(self):
-        """Green 路径：bcrypt 哈希长度正确"""
+    def test_sha256_hash_length(self):
+        """Green 路径：SHA-256 哈希长度正确"""
         from app.auth import hash_api_key
 
         key_hash = hash_api_key("test-key")
-        assert len(key_hash) == 60, "bcrypt 哈希长度应为 60 字符"
-        assert key_hash.startswith("$2"), "bcrypt 哈希应以$2 开头"
+        assert len(key_hash) == 64, "SHA-256 哈希长度应为 64 字符"
+        # SHA-256 哈希是十六进制字符串
+        assert all(c in '0123456789abcdef' for c in key_hash), "SHA-256 哈希应为十六进制字符串"
 
 
 @pytest.mark.asyncio
