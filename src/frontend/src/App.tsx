@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
+import SingleInputView from './components/SingleInputView';
+import LiveExecutionView from './components/LiveExecutionView';
+import SidePanel from './components/SidePanel';
 import Dashboard from './components/Dashboard';
 import PlaybackTree from './components/PlaybackTree';
 import ConfigPanel from './components/ConfigPanel';
 import TaskQueueDashboard from './components/TaskQueueDashboard';
 import ApiKeyManager from './components/ApiKeyManager';
 import MetricsDashboard from './components/MetricsDashboard';
-import TaskSubmitPanel from './components/TaskSubmitPanel';
 
 interface Task {
   id: number;
@@ -14,11 +16,15 @@ interface Task {
   status: string;
 }
 
+type ViewMode = 'input' | 'execution' | 'advanced';
+
 function App() {
   const [status, setStatus] = useState<string>('Detecting...');
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'submit' | 'dashboard' | 'queue' | 'config' | 'auth' | 'metrics'>('submit');
+  const [viewMode, setViewMode] = useState<ViewMode>('input');
+  const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelContent, setPanelContent] = useState<'settings' | 'apikeys' | 'metrics'>('settings');
 
   useEffect(() => {
     fetch('/api/v1/health')
@@ -32,13 +38,20 @@ function App() {
         setStatus('[Disconnected]');
       });
 
-    // Fetch task list
+    // Fetch task list to check for running tasks
     fetch('/api/v1/tasks')
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setTasks(data);
-          setSelectedTaskId(data[0].id);
+          // Check for running tasks - if any, show execution view
+          const runningTask = data.find(t => t.status === 'RUNNING');
+          if (runningTask) {
+            setCurrentTaskId(runningTask.id);
+            setViewMode('execution');
+          } else if (data.length > 0) {
+            setCurrentTaskId(data[0].id);
+          }
         }
       })
       .catch(err => {
@@ -46,12 +59,101 @@ function App() {
       });
   }, []);
 
+  // Handle task submission from SingleInputView
+  const handleTaskSubmit = async (objective: string) => {
+    try {
+      // Create API key first if needed (simplified - use existing key)
+      const response = await fetch('/api/v1/tasks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          project_id: 1, // Default project
+          raw_objective: objective,
+          priority: 5
+        })
+      });
+
+      if (response.ok) {
+        const task = await response.json();
+        setTasks(prev => [...prev, task]);
+        setCurrentTaskId(task.id);
+        setViewMode('execution');
+      }
+    } catch (err) {
+      console.error('Failed to create task:', err);
+    }
+  };
+
+  // Render based on view mode
+  if (viewMode === 'input') {
+    return (
+      <>
+        <SingleInputView
+          onSubmit={handleTaskSubmit}
+          onSettingsClick={() => {
+            setPanelContent('settings');
+            setPanelOpen(true);
+          }}
+          onApiKeysClick={() => {
+            setPanelContent('apikeys');
+            setPanelOpen(true);
+          }}
+          onMetricsClick={() => {
+            setPanelContent('metrics');
+            setPanelOpen(true);
+          }}
+        />
+        {/* 高级模式按钮 */}
+        <button
+          onClick={() => setViewMode('advanced')}
+          className="fixed bottom-4 right-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm"
+          aria-label="高级"
+        >
+          高级模式
+        </button>
+        {/* 侧边面板 */}
+        <SidePanel
+          isOpen={panelOpen}
+          onClose={() => setPanelOpen(false)}
+          title={panelContent === 'settings' ? '设置' : panelContent === 'apikeys' ? 'API Keys' : '监控'}
+        >
+          {panelContent === 'apikeys' ? <ApiKeyManager /> : panelContent === 'metrics' ? <MetricsDashboard /> : (
+            <div className="text-slate-500">配置设置面板内容...</div>
+          )}
+        </SidePanel>
+      </>
+    );
+  }
+
+  if (viewMode === 'execution' && currentTaskId) {
+    return (
+      <>
+        <LiveExecutionView
+          taskId={currentTaskId}
+          onComplete={() => setViewMode('input')}
+          isCompleted={tasks.find(t => t.id === currentTaskId)?.status === 'COMPLETED'}
+        />
+        {/* 高级模式按钮 */}
+        <button
+          onClick={() => setViewMode('advanced')}
+          className="fixed bottom-4 right-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm"
+          aria-label="高级"
+        >
+          高级模式
+        </button>
+      </>
+    );
+  }
+
+  // Advanced mode - original dashboard
   return (
     <div className="min-h-screen bg-slate-950 text-slate-300 p-8 flex flex-col items-center">
       <div className="w-full max-w-6xl mb-8 flex justify-between items-end border-b border-slate-800 pb-4">
         <div>
           <h1 className="text-3xl font-bold text-cyan-400 font-mono tracking-wider">SECA Core Control</h1>
-          <p className="text-slate-500 text-sm mt-1">Self-Evolving Coding Agent - Diagnostic HUD</p>
+          <p className="text-slate-500 text-sm mt-1">Self-Evolving Coding Agent - Diagnostic HUD (Advanced)</p>
         </div>
         <div className="font-mono text-sm flex items-center gap-4">
           <span>
@@ -60,117 +162,25 @@ function App() {
               {status}
             </span>
           </span>
-          {tasks.length > 0 && (
-            <select
-              value={selectedTaskId || ''}
-              onChange={(e) => setSelectedTaskId(Number(e.target.value))}
-              className="px-2 py-1 bg-slate-900 border border-slate-700 rounded text-slate-300 text-sm"
-            >
-              {tasks.map(task => (
-                <option key={task.id} value={task.id}>
-                  Task #{task.id}: {task.status}
-                </option>
-              ))}
-            </select>
-          )}
+          {/* 返回简单模式按钮 */}
+          <button
+            onClick={() => setViewMode('input')}
+            className="px-3 py-1 bg-cyan-600 text-white rounded"
+          >
+            简单模式
+          </button>
         </div>
       </div>
 
-      {/* 标签页切换 */}
-      <div className="w-full max-w-6xl mb-4 flex gap-2">
-        <button
-          onClick={() => setActiveTab('submit')}
-          className={`px-4 py-2 rounded font-medium transition-colors ${
-            activeTab === 'submit'
-              ? 'bg-cyan-600 text-white'
-              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-          }`}
-        >
-          提交任务
-        </button>
-        <button
-          onClick={() => setActiveTab('dashboard')}
-          className={`px-4 py-2 rounded font-medium transition-colors ${
-            activeTab === 'dashboard'
-              ? 'bg-cyan-600 text-white'
-              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-          }`}
-        >
-          Dashboard
-        </button>
-        <button
-          onClick={() => setActiveTab('queue')}
-          className={`px-4 py-2 rounded font-medium transition-colors ${
-            activeTab === 'queue'
-              ? 'bg-amber-600 text-white'
-              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-          }`}
-        >
-          Task Queue
-        </button>
-        <button
-          onClick={() => setActiveTab('config')}
-          className={`px-4 py-2 rounded font-medium transition-colors ${
-            activeTab === 'config'
-              ? 'bg-purple-600 text-white'
-              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-          }`}
-        >
-          Configuration
-        </button>
-        <button
-          onClick={() => setActiveTab('auth')}
-          className={`px-4 py-2 rounded font-medium transition-colors ${
-            activeTab === 'auth'
-              ? 'bg-emerald-600 text-white'
-              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-          }`}
-        >
-          API Keys
-        </button>
-        <button
-          onClick={() => setActiveTab('metrics')}
-          className={`px-4 py-2 rounded font-medium transition-colors ${
-            activeTab === 'metrics'
-              ? 'bg-blue-600 text-white'
-              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-          }`}
-        >
-          Monitoring
-        </button>
-      </div>
-
-      {/* 内容区域 */}
-      <div className="w-full max-w-6xl">
-        {activeTab === 'submit' ? (
-          <div className="w-full max-w-md">
-            <TaskSubmitPanel
-              onTaskCreated={(task) => {
-                setTasks(prev => [...prev, task]);
-                setSelectedTaskId(task.id);
-                setActiveTab('queue');
-              }}
-            />
+      {/* 保留原有 Dashboard 组件 */}
+      {currentTaskId && (
+        <div className="w-full max-w-6xl">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <Dashboard taskId={currentTaskId.toString()} />
+            <PlaybackTree taskId={currentTaskId.toString()} />
           </div>
-        ) : activeTab === 'queue' ? (
-          <TaskQueueDashboard />
-        ) : activeTab === 'auth' ? (
-          <ApiKeyManager />
-        ) : activeTab === 'metrics' ? (
-          <MetricsDashboard />
-        ) : selectedTaskId ? (
-          activeTab === 'dashboard' ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <Dashboard taskId={selectedTaskId.toString()} />
-              <PlaybackTree taskId={selectedTaskId.toString()} />
-            </div>
-          ) : activeTab === 'config' ? (
-            <ConfigPanel projectId={tasks.find(t => t.id === selectedTaskId)?.project_id || 0} />
-          ) : null
-        ) : (
-          <div className="text-slate-500">请先提交任务以使用此功能。</div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

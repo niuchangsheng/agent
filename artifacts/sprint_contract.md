@@ -120,18 +120,17 @@ interface LiveExecutionViewProps {
 - [x] SingleInputView 测试全部通过 (4 tests)
 - [x] LiveExecutionView 测试全部通过 (4 tests)
 - [x] SidePanel 测试全部通过 (3 tests)
-- [x] 前端新组件测试全部通过 (16 tests)
-- [ ] App 重构待完成 (保留现有 Dashboard 作为高级模式)
+- [x] App.tsx 集成完成 (导入新组件，默认显示 SingleInputView)
+- [x] 前端集成测试通过 (4 tests)
+- [x] 前端全量测试通过 (20 tests)
 - [x] handoff.md 更新完成
 
 ## 测试证据
 
 ```
-npm test -- src/components/__tests__/
-======================== 16 passed ========================
+npm test -- src/components/__tests__/ src/__tests__/App.integration.test.tsx
+======================== 20 passed ========================
 ```
 
----
-
-**签署时间**: 2026-04-19
-**Generator 签名**: Sprint 20 Feature 25 (SingleInputView + LiveExecutionView + SidePanel) 开发完成
+## 整修签名
+**Generator**: Sprint 20 整修完成 ✅ - 组件已集成到 App.tsx

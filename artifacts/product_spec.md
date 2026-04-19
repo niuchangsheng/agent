@@ -254,11 +254,12 @@
 - [x] Tenant/Project 数据模型扩展、tenant_id 中间件、作用域过滤器 — P0漏洞整修: 7端点添加tenant_id过滤
 - [x] 租户管理面板、配额监控、越权访问测试覆盖 — API层隔离测试6项全部通过
 
-**Sprint 20: 前端 UX 简化 + 多租户 UI + 协作 — 实现 Feature 25 + Feature 22 (UI) + Feature 23 — [!] QA 打回**
-- [!] SingleInputView/LiveExecutionView/SidePanel 组件创建完成 — 但未集成到 App.tsx
+**Sprint 20: 前端 UX 简化 + 多租户 UI + 协作 — 实现 Feature 25 + Feature 22 (UI) + Feature 23 — [/] 整修完成待验收**
+- [x] SingleInputView/LiveExecutionView/SidePanel 组件创建完成 — 已集成到 App.tsx
+- [x] App.tsx 重构 — 默认显示 SingleInputView，保留 Dashboard 作为高级模式
 - [ ] 租户选择器 UI、项目隔离视觉、多租户 API Key 管理
 - [ ] 协作评论组件、WebSocket 实时推送、@提及通知
-- [x] 前端组件单元测试通过 (11 tests)
+- [x] 前端单元测试通过 (20 tests)
 
 ## 整体项目竣工结项标准 (Definition of Done)
 
