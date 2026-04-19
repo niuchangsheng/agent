@@ -2,11 +2,11 @@
 
 ## 最新进度与心跳留存
 - **最近更新时间**: 2026-04-19
-- **当前版本**: v2.0 Sprint 20 开发完成
-- **更新方身份**: SECA Generator (TDD 工程师)
+- **当前版本**: v2.0 Sprint 20 QA 打回
+- **更新方身份**: SECA Evaluator (零容忍 QA)
 
 ## 当前游标与系统状态
-- **核心阶段落点**: **Sprint 20 (前端 UX 简化) Feature 25 开发完成**
+- **核心阶段落点**: **Sprint 20 (前端 UX 简化) QA 打回 - 组件未集成**
 - **目标执行体进展**:
   - Sprint 1-5 (v1.0) ✅ 已完成
   - Sprint 6-8 (v1.1) ✅ 已完成
@@ -16,48 +16,48 @@
   - Sprint 17.5 (v2.0) ✅ QA 评审通过 (8.75/10)
   - Sprint 18 (v2.0) ✅ QA 评审通过 (8.75/10)
   - Sprint 19 (v2.0) ✅ QA 整修验收通过 (9.15/10)
-  - Sprint 20 (v2.0) ✅ 开发完成 - 待 QA 验收
+  - Sprint 20 (v2.0) ❌ QA 打回 (6.60/10) - 组件未集成
 
-## Sprint 20 开发内容摘要
+## QA 打回详情
 
-### Feature 25: 前端 UX 简化重构
+### 加权总分: 6.60/10 ❌ FAIL
 
-**新增组件**:
-1. **SingleInputView.tsx** - 居中输入框主界面
-   - 输入框占屏幕主体宽度
-   - 提交按钮青色主题
-   - 右上角 ⚙️/🔑/📊 图标
+| 维度 | 分数 | 权重 | 加权分 |
+|------|------|------|--------|
+| 功能完整性 | 5/10 | 35% | 1.75 |
+| 设计工程质量 | 9/10 | 25% | 2.25 |
+| 代码内聚素质 | 9/10 | 20% | 1.80 |
+| 用户体验 | 4/10 | 20% | 0.80 |
 
-2. **LiveExecutionView.tsx** - 执行视图
-   - SSE 流式输出展示
-   - 状态指示 (RUNNING/COMPLETED/FAILED)
-   - 任务完成后显示"新任务"按钮
+### P0 问题: 组件未集成
 
-3. **SidePanel.tsx** - 侧边配置面板
-   - 从右侧滑出
-   - 宽度 ≤ 30%，不遮挡主视图
-   - 关闭按钮返回主视图
+**问题**: SingleInputView/LiveExecutionView/SidePanel 组件创建完成，但未导入到 App.tsx，无法在浏览器中实际使用。
 
-### TDD 流程证据
-
-**🔴 Red Phase (测试先行)**:
-- 创建 3 个测试文件 (11 tests)
-- 测试失败 (组件未创建)
-
-**🟢 Green Phase (最少实现)**:
-- 创建 SingleInputView.tsx
-- 创建 LiveExecutionView.tsx
-- 创建 SidePanel.tsx
-
-**🔵 Refactor Phase (回归验证)**:
+**证据**:
+```bash
+$ grep -E "SingleInputView|LiveExecutionView|SidePanel" src/frontend/src/App.tsx
+# 无匹配 - 组件未被导入或渲染
 ```
-npm test -- src/components/__tests__/
-======================== 16 passed ========================
-```
+
+### 整改要求
+
+| # | 整改内容 |
+|---|----------|
+| 1 | App.tsx 导入 SingleInputView/LiveExecutionView/SidePanel |
+| 2 | App.tsx 重构主视图逻辑 (默认显示 SingleInputView) |
+| 3 | 提交后跳转执行视图 |
+| 4 | 添加 App.test.tsx 验证默认视图和跳转逻辑 |
+
+### 已完成项
+
+- [x] SingleInputView 组件创建 (TypeScript 接口 + Glassmorphism 样式)
+- [x] LiveExecutionView 组件创建 (SSE 连接 + 状态指示)
+- [x] SidePanel 组件创建 (侧边滑出 + 宽度控制)
+- [x] 前端单元测试通过 (11 tests)
 
 ## 下一步动作
 
-调用 `/qa` 执行 Sprint 20 验收评审
+调用 `/build` 执行 Sprint 20 整改修复
 
 ---
-**Generator 签名**: Sprint 20 Feature 25 开发完成 (待 QA 验收)
+**Evaluator 签名**: Sprint 20 QA 打回 (6.60/10) - 组件未集成

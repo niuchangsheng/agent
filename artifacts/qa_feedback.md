@@ -1,10 +1,10 @@
-# QA 评审报告：Sprint 19 多租户架构 (上) 整修验收
+# QA 评审报告：Sprint 20 前端 UX 简化 - Feature 25 (部分交付)
 
 ## 评审信息
 - **评审日期**: 2026-04-19
 - **评审方**: SECA Evaluator (零容忍 QA)
-- **评审对象**: Sprint 19 P0 安全漏洞整修
-- **评审类型**: 功能验收 + 安全审计 + 回归验证
+- **评审对象**: Sprint 20 Feature 25 (SingleInputView 组件)
+- **评审类型**: 功能验收 + TDD 合规 + 组件集成验证
 
 ---
 
@@ -19,11 +19,9 @@ $ curl -s http://localhost:8000/api/v1/health
 
 ### 前端服务
 ```bash
-$ curl -s http://localhost:5174/ | head -10
+$ curl -s http://localhost:5174/ | head -5
 <!doctype html>
-<html lang="en">
-  <head>
-    <script type="module">import { injectIntoGlobalHook } ...
+<html lang="en">...
 ```
 **结果**: ✅ PASS
 
@@ -32,75 +30,66 @@ $ curl -s http://localhost:5174/ | head -10
 ## TDD 合规审计
 
 ### 测试文件审查
-新增测试文件 `src/backend/tests/test_api_tenant_isolation.py` 包含:
-- 6 个 API 层隔离测试 (API-001 ~ API-006)
-- 完整的 fixture setup 创建两租户、API Key、项目、任务
-- 边界防御测试: tenant_id 过滤、跨租户访问拒绝
-
-### Git 提交顺序验证
-```
-05f23d4 fix: Sprint 19 P0 安全漏洞整修 - API端点添加tenant_id过滤
-e84f5e5 feat: Sprint 19 多租户架构开发完成 - QA 打回 (P0 安全漏洞)
-```
-**TDD 流程**: Red (测试先行) → Green (修复端点) → Refactor (回归验证) ✅
+新增测试文件:
+- `src/frontend/src/components/__tests__/SingleInputView.test.tsx` (4 tests)
+- `src/frontend/src/components/__tests__/LiveExecutionView.test.tsx` (4 tests)
+- `src/frontend/src/components/__tests__/SidePanel.test.tsx` (3 tests)
 
 ### 测试执行
 ```bash
-$ pytest tests/test_api_tenant_isolation.py -v
-======================== 6 passed ========================
+$ npm test -- src/components/__tests__/
+======================== 11 passed ========================
 ```
 
-**TDD 评价**: ✅ 合规 - 测试先写、边界覆盖、回归验证
+**TDD 评价**: ✅ 合规 - 测试先写、组件后实现、回归验证通过
 
 ---
 
-## API 层 tenant_id 过滤实测
+## 🚨 P0 组件集成缺失 (BLOCKER)
 
-### 测试环境
-- Tenant A (id=1): Key A, Project A (id=1), Task A (id=1)
-- Tenant B (id=2): Key B, Project B (id=2), Task B (id=2)
-
-### 测试结果
-
-| TC-ID | 端点 | Tenant B Key 请求 | 预期 | 实际 | 状态 |
-|-------|------|-------------------|------|------|------|
-| API-001 | `/api/v1/projects` | GET | 仅 Project B | `['Project_B']`, tenant_ids=[2] | ✅ PASS |
-| API-002 | `/api/v1/tasks` | GET | 仅 Task B | `['Task B']`, tenant_ids=[2] | ✅ PASS |
-| API-003 | `/api/v1/tasks/1/dag-tree` | GET | 空数组/403 | `[]` 200 | ✅ PASS |
-| API-004 | `/api/v1/tasks/1/generate-adr` | POST | 403 | `{"detail":"Access denied"}` 403 | ✅ PASS |
-| API-005 | `/api/v1/containers` | GET | 仅 Tenant B | task_ids=[2] | ✅ PASS |
-| API-006 | `/api/v1/tasks/1/logs` | GET | 403 | `{"detail":"Access denied"}` 403 | ✅ PASS |
+### 问题描述
+新创建的组件 **未集成到 App.tsx**，无法在浏览器中实际使用。
 
 ### 证据
 ```bash
-# API-001 证据
-$ curl -s http://localhost:8000/api/v1/projects -H "X-API-Key: NeBuo9eHHWQzqsAeAk5QqUP2TbnF2mmzkq0UH_a8v0I"
-返回项目: ['Project_B']
-tenant_ids: [2]
-
-# API-004 证据
-$ curl -s -w "\nHTTP: %{http_code}" -X POST http://localhost:8000/api/v1/tasks/1/generate-adr -H "X-API-Key: NeBuo9eHHWQzqsAeAk5QqUP2TbnF2mmzkq0UH_a8v0I"
-{"detail":"Access denied"}
-HTTP: 403
+$ grep -E "SingleInputView|LiveExecutionView|SidePanel" src/frontend/src/App.tsx
+# 无匹配 - 组件未被导入或渲染
 ```
+
+### 合同违规声明
+> ⚠️ **组件集成验证协议**: "组件存在 ≠ 组件可用"。必须检查 import 语句和渲染位置。
+> 
+> 验收标准明确规定:
+> - `test_default_view_is_single_input` - 默认显示 SingleInputView
+> - `test_running_task_shows_execution_view` - 有运行任务时直接显示执行视图
+> 
+> **当前状态**: 组件文件存在但未集成 = 功能未完成
 
 ---
 
-## 回归测试
+## 组件质量审查
 
-| Sprint | 端点 | 状态 |
-|--------|------|------|
-| Sprint 6 | `/api/v1/health` | ✅ 200 OK |
-| Sprint 17 | `/api/v1/docker-config` | ✅ (需认证) |
-| Sprint 18 | `/api/v1/images` | ✅ (需认证) |
+### SingleInputView.tsx
+| 指标 | 状态 | 证据 |
+|------|------|------|
+| TypeScript 接口 | ✅ | `SingleInputViewProps` 定义完整 |
+| Glassmorphism 样式 | ✅ | `backdrop-blur-sm` |
+| aria-label | ✅ | 设置/API/监控按钮均有 |
+| 提交按钮青色主题 | ✅ | `bg-cyan-600` |
 
-### 全量测试套件
-```bash
-$ pytest tests/ -v
-=================== 166 passed, 9 skipped, 2 failed ====================
-```
-- 25 tenant isolation tests: ✅ 全部通过
-- 2 failed: `test_config.py` (预存在测试隔离问题,非安全相关)
+### LiveExecutionView.tsx
+| 指标 | 状态 | 证据 |
+|------|------|------|
+| TypeScript 接口 | ✅ | `LiveExecutionViewProps` 定义完整 |
+| SSE 连接处理 | ✅ | EventSource + 环境检查 |
+| 状态指示 | ✅ | RUNNING/COMPLETED/FAILED 徽章 |
+
+### SidePanel.tsx
+| 指标 | 状态 | 证据 |
+|------|------|------|
+| TypeScript 接口 | ✅ | `SidePanelProps` 定义完整 |
+| 侧边滑出 | ✅ | `fixed right-0` |
+| 宽度控制 | ✅ | `w-80` (约 20-30%) |
 
 ---
 
@@ -110,46 +99,41 @@ $ pytest tests/ -v
 
 | 验收项 | 状态 | 证据 |
 |--------|------|------|
-| `/api/v1/projects` tenant_id 过滤 | ✅ | API-001: 仅返回 Tenant B 项目 |
-| `/api/v1/tasks` tenant_id 过滤 | ✅ | API-002: 仅返回 Tenant B 任务 |
-| `/api/v1/tasks/{id}/dag-tree` tenant_id 过滤 | ✅ | API-003: 返回空数组 |
-| `/api/v1/tasks/{id}/generate-adr` 403 拒绝 | ✅ | API-004: 403 Access denied |
-| `/api/v1/containers` tenant_id 过滤 | ✅ | API-005: 仅返回 Tenant B 容器 |
-| `/api/v1/containers/history` tenant_id 过滤 | ✅ | 测试覆盖 |
-| `/api/v1/tasks/{id}/logs` 403 拒绝 | ✅ | API-006: 403 Access denied |
+| SingleInputView 组件创建 | ✅ | 文件存在，测试通过 |
+| LiveExecutionView 组件创建 | ✅ | 文件存在，测试通过 |
+| SidePanel 组件创建 | ✅ | 文件存在，测试通过 |
+| **App.tsx 集成** | ❌ **FAIL** | 未导入/渲染新组件 |
 
-**得分**: **10/10** (所有必修项全部通过)
+**得分**: **5/10** (组件创建完成，但集成缺失 = 功能未闭环)
 
 ### 2. 设计工程质量 (25%)
 
 | 指标 | 评估 |
 |------|------|
-| tenant_id 过滤设计 | ✅ 统一的 `.where(Model.tenant_id == api_key.tenant_id)` 模式 |
-| 403 拒绝设计 | ✅ 跨租户操作返回 HTTPException(status_code=403) |
-| require_read_key 依赖 | ✅ 列表端点添加认证依赖 |
+| TypeScript 类型定义 | ✅ 所有组件有完整接口 |
+| Glassmorphism 样式一致性 | ✅ 与现有设计风格一致 |
+| 代码结构 | ✅ 简洁，无 YAGNI |
 
-**得分**: **9/10** (设计一致, 无过度复杂)
+**得分**: **9/10** (设计质量优秀)
 
 ### 3. 代码内聚素质 (20%)
 
 | 指标 | 评估 |
 |------|------|
 | TDD 流程合规 | ✅ Red→Green→Refactor |
-| 测试覆盖 | ✅ 6 新增 API 层隔离测试 + 19 原有 tenant 测试 |
-| 边界防御 | ✅ 跨租户访问测试覆盖 |
-| 回归验证 | ✅ 166 passed |
+| 测试覆盖 | ✅ 11 tests 覆盖核心功能 |
+| 边界防御 | ✅ 空输入禁用按钮、EventSource 环境检查 |
 
-**得分**: **9/10** (TDD 合规, 测试充分)
+**得分**: **9/10** (TDD 合规，测试充分)
 
 ### 4. 用户体验 (20%)
 
 | 指标 | 评估 |
 |------|------|
-| 本 Sprint 无前端交付 | N/A |
-| 回归验证 - 前端未破坏 | ✅ 前端服务正常运行 |
-| API 错误消息 | ✅ "Access denied" 清晰可理解 |
+| **组件未集成** | ❌ 用户无法在浏览器使用新组件 |
+| 现有 Dashboard 未破坏 | ✅ 前端服务正常运行 |
 
-**得分**: **8/10** (基线保持, API 消息友好)
+**得分**: **4/10** (组件存在但无法使用 = UX 缺陷)
 
 ---
 
@@ -157,35 +141,78 @@ $ pytest tests/ -v
 
 | 维度 | 分数 | 权重 | 加权分 |
 |------|------|------|--------|
-| 功能完整性 | 10/10 | 35% | 3.50 |
+| 功能完整性 | 5/10 | 35% | 1.75 |
 | 设计工程质量 | 9/10 | 25% | 2.25 |
 | 代码内聚素质 | 9/10 | 20% | 1.80 |
-| 用户体验 | 8/10 | 20% | 1.60 |
-| **总计** | - | 100% | **9.15** |
+| 用户体验 | 4/10 | 20% | 0.80 |
+| **总计** | - | 100% | **6.60** |
 
 ---
 
 ## 评审结论
 
-**✅ PASS** - 加权总分 9.15 ≥ 7.0
-**✅ PASS** - 所有单项 ≥ 6 分
-**✅ PASS** - P0 安全漏洞已修复, 跨租户数据隔离有效
+**❌ FAIL** - 加权总分 6.60 < 7.0
+**❌ FAIL** - 功能完整性 5 < 6
+**❌ FAIL** - 用户体验 4 < 6
 
-### 主要成效
-1. **安全漏洞修复**: 7 个 API 端点添加 tenant_id 过滤
-2. **API 层隔离**: Tenant B 无法获取 Tenant A 数据
-3. **TDD 合规**: 测试先行, 边界覆盖
+### 主要原因
+1. **组件未集成**: SingleInputView/LiveExecutionView/SidePanel 创建但未导入到 App.tsx
+2. **功能未闭环**: 用户无法在浏览器实际使用新组件
 
-### 改进建议 (非阻塞)
-1. `test_config.py` 测试隔离问题可后续优化
-2. `regex` 参数可升级为 `pattern` (FastAPI deprecation warning)
+---
+
+## 🔧 整改指导
+
+### 必修项 (MUST FIX)
+
+1. **修改 `App.tsx` 导入新组件**
+```tsx
+import SingleInputView from './components/SingleInputView';
+import LiveExecutionView from './components/LiveExecutionView';
+import SidePanel from './components/SidePanel';
+```
+
+2. **重构 App.tsx 主视图**
+```tsx
+function App() {
+  const [view, setView] = useState<'input' | 'execution'>('input');
+  const [taskId, setTaskId] = useState<number | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+
+  if (view === 'input') {
+    return (
+      <SingleInputView
+        onSubmit={(objective) => {
+          // POST /api/v1/tasks/queue
+          // 获取 taskId
+          setTaskId(response.taskId);
+          setView('execution');
+        }}
+        onSettingsClick={() => setPanelOpen(true)}
+        onApiKeysClick={() => setActiveTab('auth')}
+        onMetricsClick={() => setActiveTab('metrics')}
+      />
+    );
+  }
+
+  return (
+    <LiveExecutionView
+      taskId={taskId!}
+      onComplete={() => setView('input')}
+    />
+  );
+}
+```
+
+3. **添加 App.test.tsx 测试**
+验证默认视图为 SingleInputView，提交后跳转执行视图。
 
 ---
 
 ## 状态更新
 
-**Sprint 19 状态**: `[x]` 通过
+**Sprint 20 状态**: `[!]` 打回 - 组件集成缺失
 
 ---
 
-**Evaluator 签名**: Sprint 19 整修验收通过 (9.15/10)
+**Evaluator 签名**: Sprint 20 QA 打回 (6.60/10) - 组件未集成
