@@ -170,11 +170,14 @@ Return your decision as JSON.
 
     def _parse_response(self, response) -> Dict:
         """解析 Claude 响应"""
-        # 从响应中提取决策
-        content = response.content[0] if response.content else None
+        # 遍历所有 content blocks，找到 text block
+        text = None
+        for block in response.content:
+            if hasattr(block, 'text') and block.type == 'text':
+                text = block.text
+                break
 
-        if content and hasattr(content, 'text'):
-            text = content.text
+        if text:
             # 尝试解析 JSON
             try:
                 # 尝试找到 JSON 部分
