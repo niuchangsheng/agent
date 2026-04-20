@@ -22,7 +22,7 @@ describe('App Integration - Sprint 20', () => {
     // 等待组件加载
     await waitFor(() => {
       // 验证默认显示 SingleInputView (输入框居中)
-      const textarea = screen.getByPlaceholderText(/输入任务目标/i);
+      const textarea = screen.getByPlaceholderText(/例如|修复|JWT/i);
       expect(textarea).toBeInTheDocument();
     });
   });

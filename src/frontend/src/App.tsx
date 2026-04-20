@@ -8,12 +8,18 @@ import ConfigPanel from './components/ConfigPanel';
 import TaskQueueDashboard from './components/TaskQueueDashboard';
 import ApiKeyManager from './components/ApiKeyManager';
 import MetricsDashboard from './components/MetricsDashboard';
+import Toast, { ToastType } from './components/Toast';
 
 interface Task {
   id: number;
   project_id: number;
   raw_objective: string;
   status: string;
+}
+
+interface ToastState {
+  message: string;
+  type: ToastType;
 }
 
 type ViewMode = 'input' | 'execution' | 'advanced';
@@ -25,6 +31,8 @@ function App() {
   const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelContent, setPanelContent] = useState<'settings' | 'apikeys' | 'metrics'>('settings');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   useEffect(() => {
     const apiKey = localStorage.getItem('api_key');
@@ -67,15 +75,24 @@ function App() {
     }
   }, []);
 
+  // Show toast notification
+  const showToast = (message: string, type: ToastType) => {
+    setToast({ message, type });
+  };
+
   // Handle task submission from SingleInputView
   const handleTaskSubmit = async (objective: string) => {
     try {
       const apiKey = localStorage.getItem('api_key');
       if (!apiKey) {
-        console.error('No API Key found in localStorage');
-        alert('请先创建 API Key：点击右上角 🔑 API 按钮创建');
+        showToast('请先创建 API Key：点击右上角 API 按钮创建', 'warning');
+        // 自动打开 API Key 面板
+        setPanelContent('apikeys');
+        setPanelOpen(true);
         return;
       }
+
+      setIsSubmitting(true);
 
       // Create API key first if needed (simplified - use existing key)
       const response = await fetch('/api/v1/tasks', {
@@ -96,14 +113,17 @@ function App() {
         setTasks(prev => [...prev, task]);
         setCurrentTaskId(task.id);
         setViewMode('execution');
+        showToast('任务创建成功', 'success');
       } else {
         const error = await response.json();
         console.error('Failed to create task:', error);
-        alert(`创建任务失败: ${error.detail || '未知错误'}`);
+        showToast(`创建任务失败: ${error.detail || '未知错误'}`, 'error');
       }
     } catch (err) {
       console.error('Failed to create task:', err);
-      alert('创建任务失败: 网络错误');
+      showToast('创建任务失败: 网络错误', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -125,11 +145,12 @@ function App() {
             setPanelContent('metrics');
             setPanelOpen(true);
           }}
+          isSubmitting={isSubmitting}
         />
         {/* 高级模式按钮 */}
         <button
           onClick={() => setViewMode('advanced')}
-          className="fixed bottom-4 right-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm"
+          className="fixed bottom-4 right-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm transition-colors"
           aria-label="高级"
         >
           高级模式
@@ -141,9 +162,17 @@ function App() {
           title={panelContent === 'settings' ? '设置' : panelContent === 'apikeys' ? 'API Keys' : '监控'}
         >
           {panelContent === 'apikeys' ? <ApiKeyManager /> : panelContent === 'metrics' ? <MetricsDashboard /> : (
-            <div className="text-slate-500">配置设置面板内容...</div>
+            <ConfigPanel />
           )}
         </SidePanel>
+        {/* Toast 通知 */}
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
       </>
     );
   }
@@ -159,7 +188,7 @@ function App() {
         {/* 高级模式按钮 */}
         <button
           onClick={() => setViewMode('advanced')}
-          className="fixed bottom-4 right-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm"
+          className="fixed bottom-4 right-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm transition-colors"
           aria-label="高级"
         >
           高级模式
@@ -186,7 +215,7 @@ function App() {
           {/* 返回简单模式按钮 */}
           <button
             onClick={() => setViewMode('input')}
-            className="px-3 py-1 bg-cyan-600 text-white rounded"
+            className="px-3 py-1 bg-cyan-600 text-white rounded-lg transition-colors hover:bg-cyan-500"
           >
             简单模式
           </button>

@@ -19,7 +19,7 @@ describe('SingleInputView', () => {
     );
 
     // 验证输入框存在且居中
-    const textarea = screen.getByPlaceholderText(/输入任务目标/i);
+    const textarea = screen.getByPlaceholderText(/例如|修复|JWT/i);
     expect(textarea).toBeInTheDocument();
     expect(textarea).toHaveClass('w-full'); // 占主体宽度
   });
@@ -71,7 +71,7 @@ describe('SingleInputView', () => {
     );
 
     // 填写输入框
-    const textarea = screen.getByPlaceholderText(/输入任务目标/i);
+    const textarea = screen.getByPlaceholderText(/例如|修复|JWT/i);
     fireEvent.change(textarea, { target: { value: 'Fix bug in auth module' } });
 
     // 点击提交

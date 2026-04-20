@@ -17,7 +17,7 @@ describe('App Root Render - Sprint 20 UX', () => {
       .mockResolvedValueOnce({ ok: true, json: async () => [] });
     render(<App />);
     // 新界面默认显示输入框
-    expect(screen.getByPlaceholderText(/输入任务目标/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/例如|修复|JWT/i)).toBeInTheDocument();
   });
 
   it('应当显示提交按钮和高级模式入口', () => {
