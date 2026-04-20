@@ -3,8 +3,9 @@
 ## Available Slash Commands
 
 - `/plan` - Execute Planner role for product specification
-- `/build` - Execute Generator role for TDD development  
+- `/build` - Execute Generator role for TDD development
 - `/qa` - Execute Evaluator role for QA review
+- `/ux-review` - Execute UX Critic role for design critique (乔布斯级审美)
 - `/run` - Run automated build loop (plan→build→qa)
 - `/release` - Execute release workflow when all sprints complete
 
@@ -14,6 +15,7 @@ Refer to `.claude/agents/` for detailed role definitions:
 - `planner.md` - Product architect role
 - `generator.md` - TDD full-stack engineer role
 - `evaluator.md` - Zero-tolerance QA evaluator role
+- `ux-critic.md` - Steve Jobs-level design critic role
 
 ## Workflow
 

@@ -4,11 +4,13 @@
 - **Planner** (产品架构师): `.claude/agents/planner.md`
 - **Generator** (TDD 工程师): `.claude/agents/generator.md`
 - **Evaluator** (QA 评估官): `.claude/agents/evaluator.md`
+- **UX Critic** (体验官): `.claude/agents/ux-critic.md`
 
 ## 工作流命令
 - `/plan` - 执行 Planner 角色，生成产品规格
 - `/build` - 执行 Generator 角色，TDD 方式开发
 - `/qa` - 执行 Evaluator 角色，QA 评审打分
+- `/ux-review` - 执行 UX Critic 角色，乔布斯级设计审判
 - `/run` - 自动调度器，驱动 规划→构建→QA 闭环
 - `/release` - 项目结项交付
 
@@ -16,6 +18,7 @@
 - `artifacts/product_spec.md` - 产品规格说明书
 - `artifacts/sprint_contract.md` - Sprint 验收合同
 - `artifacts/qa_feedback.md` - QA 评审反馈
+- `artifacts/ux_review.md` - UX 体验评审报告
 - `artifacts/handoff.md` - 交接文档
 - `artifacts/decisions/` - ADR 决策记录
 - `artifacts/release_report.md` - 结项报告
