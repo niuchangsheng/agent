@@ -8,7 +8,9 @@ import ConfigPanel from './components/ConfigPanel';
 import TaskQueueDashboard from './components/TaskQueueDashboard';
 import ApiKeyManager from './components/ApiKeyManager';
 import MetricsDashboard from './components/MetricsDashboard';
-import Toast, { ToastType } from './components/Toast';
+import Toast from './components/Toast';
+
+type ToastType = 'success' | 'error' | 'warning' | 'info';
 
 interface Task {
   id: number;
