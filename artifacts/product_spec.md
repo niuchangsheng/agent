@@ -263,7 +263,7 @@
 
 ### v3.0 (进行中)
 
-**Sprint 21: 后端测试修复 — TD-002 技术债务偿还 — ✅ 完成**
+**Sprint 21: 后端测试修复 — TD-002 技术债务偿还 — ✅ QA 通过 (9.35/10)**
 - [x] 修复 test_audit_log_captures_user_agent
 - [x] 修复 test_audit_log_captures_api_key_id
 - [x] 修复 test_write_operation_creates_audit_log

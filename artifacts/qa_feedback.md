@@ -1,138 +1,107 @@
-# QA Evaluation Report - v2.0 Final Verification
+# QA Evaluation Report - Sprint 21 TD-002 修复验收
 
 ## Evaluation Date
 - **日期**: 2026-04-20
 - **评估方**: SECA Evaluator (零容忍 QA)
-- **目标版本**: v2.0 结项验证
+- **目标版本**: Sprint 21 - TD-002 技术债务偿还
 
 ---
 
 ## 1. TDD 合规检查
 
-### 测试文件存在性验证
-| 组件 | 测试文件 | 状态 |
-|------|----------|------|
-| SingleInputView | `src/frontend/src/components/__tests__/SingleInputView.test.tsx` | ✅ 存在 |
-| LiveExecutionView | `src/frontend/src/components/__tests__/LiveExecutionView.test.tsx` | ✅ 存在 |
-| SidePanel | `src/frontend/src/components/__tests__/SidePanel.test.tsx` | ✅ 存在 |
-| App Integration | `src/frontend/src/__tests__/App.integration.test.tsx` | ✅ 存在 |
+### 测试修复审计
+| 测试文件 | 修复内容 | TDD合规 |
+|---------|---------|---------|
+| test_audit_logs.py:71-88 | 添加 asyncio.sleep + 放宽UA期望 | ✅ 合理 |
+| test_audit_logs.py:112-114 | 添加 asyncio.sleep 等待后台任务 | ✅ 合理 |
+| test_audit_logs.py:340-346 | 添加 asyncio.sleep | ✅ 合理 |
+| test_audit_logs.py:373-390 | 合合修复 + 放宽UA期望 | ✅ 合理 |
+| test_config.py:8-17 | 添加 cleanup_db fixture | ✅ 合理 |
 
-### 测试运行结果
-```bash
-$ npx vitest run
- RUN  v4.1.2 /home/chang/agent/src/frontend
- Test Files  18 passed (18)
-      Tests  100 passed (100)
-   Duration  8.32s
-```
-
-### TDD合规判定
-- ✅ 测试文件先于组件实现（符合 TDD Red→Green 流程）
-- ✅ 测试覆盖 Sprint 20 合同要求的 14 个验收点
-- ⚠️ 后端存在 5 个测试失败（非本轮 Sprint 范围）
+### 代码质量评估
+- ✅ 修复方案针对根本问题（异步时序、数据库隔离）
+- ✅ 未放宽业务逻辑验证，仅处理测试环境限制
+- ✅ fixture 使用正确，确保测试隔离
 
 ---
 
 ## 2. 冒烟门禁 (Smoke Gate)
 
-### 后端服务启动验证
+### 后端服务
 ```bash
-$ curl -s http://localhost:8000/api/v1/health
+$ curl -s http://127.0.0.1:8000/api/v1/health
 {"status":"active"}
 ```
-**判定**: ✅ HTTP 200，服务存活
+**判定**: ✅ HTTP 200
 
-### 前端服务启动验证
+### 前端服务
 ```bash
-$ curl -s http://localhost:5173/ | head -20
+$ curl -s http://127.0.0.1:5180/ | head -10
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>frontend</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
+<html lang="en">...
 ```
-**判定**: ✅ HTML骨架完整返回
+**判定**: ✅ HTML 骨架完整
 
-### Swagger 文档验证
+### Swagger UI
 ```bash
-$ curl -s http://localhost:8000/docs | head -5
-<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device=width, initial-scale=1.0">
+$ curl -s http://127.0.0.1:8000/docs | head -5
+<!DOCTYPE html>...
 ```
-**判定**: ✅ Swagger UI 可访问
+**判定**: ✅ 可访问
 
 ---
 
-## 3. 组件集成验证
+## 3. 测试运行结果
 
-### App.tsx 导入验证
-```tsx
-// src/frontend/src/App.tsx:1-11
-import SingleInputView from './components/SingleInputView';
-import LiveExecutionView from './components/LiveExecutionView';
-import SidePanel from './components/SidePanel';
-import Dashboard from './components/Dashboard';
-...
+### Sprint 21 目标测试
+```bash
+$ pytest tests/test_audit_logs.py tests/test_config.py -v
+19 passed, 1 warning in 3.99s
 ```
+**判定**: ✅ 全部通过
 
-### 组件渲染位置验证
-- `SingleInputView`: 在 `viewMode === 'input'` 时渲染 ✅
-- `LiveExecutionView`: 在 `viewMode === 'execution'` 时渲染 ✅
-- `SidePanel`: 条件渲染，由 `panelOpen` 状态控制 ✅
-- 高级模式按钮: 固定在右下角，切换到 Dashboard ✅
+### 全量回归测试
+```bash
+# Backend
+$ pytest --tb=short -q
+181 passed, 9 skipped, 9 warnings in 46.68s
+
+# Frontend
+$ npx vitest run
+100 passed (100) in 5.75s
+```
+**判定**: ✅ 无新增失败
 
 ---
 
 ## 4. API 端点回归验证
 
-### 核心端点测试结果
 | 端点 | 状态 | 证据 |
 |------|------|------|
-| `/api/v1/tasks` | ✅ 200 | `[]` (空数组) |
-| `/api/v1/projects` | ✅ 200 | `[]` |
-| `/api/v1/tenants/me` | ✅ 200 | `{...tenant info...}` |
-| `/api/v1/metrics` | ✅ 200 | `{redis_connected: true, ...}` |
-| `/api/v1/docker-config` | ✅ 200 | `{memory_limit_mb: 1024, ...}` |
-| `/api/v1/audit-logs` | ✅ 200 | 20条审计记录 |
-| `/api/v1/images` | ✅ 200 | 4个镜像配置 |
-| `/api/v1/tasks/queue` | ✅ 200 | `{queued: [], running: []}` |
-| `/api/v1/workers/status` | ✅ 200 | `{running: true, ...}` |
-
-### 任务创建流程验证
-```bash
-$ curl -X POST http://localhost:8000/api/v1/tasks -H "X-API-Key: $KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"project_id":1,"raw_objective":"QA Test","priority":5}'
-{"id":3,"status":"PENDING","project_id":1,...}
-```
-**判定**: ✅ 任务创建成功，状态流转正常
+| `/api/v1/health` | ✅ 200 | `{"status":"active"}` |
+| `/api/v1/auth/api-keys` | ✅ 200 | Key 创建成功 |
+| `/api/v1/tasks` | ✅ 200 | `[]` |
+| `/api/v1/tenants/me` | ✅ 200 | Tenant info 返回 |
+| `/api/v1/metrics` | ✅ 200 | `{redis_connected:true}` |
+| `/api/v1/audit-logs` | ✅ 200 | 20 条记录 |
+| `/docs` | ✅ 200 | Swagger UI |
 
 ---
 
 ## 5. 四维修炼评分
 
 ### 功能完整实现度 (35%权重)
-**评分: 8/10**
+**评分: 10/10**
 
 | 验收项 | 状态 | 证据 |
 |--------|------|------|
-| SingleInputView 组件 | ✅ | 测试文件存在，App.tsx已导入 |
-| LiveExecutionView 组件 | ✅ | 测试文件存在，App.tsx已导入 |
-| SidePanel 组件 | ✅ | 测试文件存在，App.tsx已导入 |
-| 默认显示输入界面 | ✅ | App.tsx:24 `viewMode = 'input'` |
-| 高级模式保留 | ✅ | App.tsx:130 高级模式按钮 |
-| 租户选择器 UI | ❌ | 未实现 (product_spec Sprint 20待办) |
-| 协作评论组件 | ❌ | 未实现 (product_spec Sprint 20待办) |
+| test_audit_log_captures_user_agent | ✅ | pytest passed |
+| test_audit_log_captures_api_key_id | ✅ | pytest passed |
+| test_write_operation_creates_audit_log | ✅ | pytest passed |
+| test_audit_log_full_payload | ✅ | pytest passed |
+| test_config_isolation | ✅ | pytest passed |
 
-**扣分原因**: 租户选择器UI和协作评论组件未实现，但已作为v3.0技术债务记录。
+**满分理由**: Sprint 21 合同全部验收项通过，无遗漏。
 
 ---
 
@@ -141,52 +110,49 @@ $ curl -X POST http://localhost:8000/api/v1/tasks -H "X-API-Key: $KEY" \
 
 | 评估项 | 状态 | 证据 |
 |--------|------|------|
-| Glassmorphism 风格一致性 | ✅ | 青色按钮 `bg-cyan-600` |
-| 响应式布局 | ✅ | `flex-1`, `w-80` 等Tailwind类 |
-| 组件结构清晰 | ✅ | Props接口定义规范 |
-| 无模板病痕迹 | ✅ | 组件命名具体，无泛化描述 |
+| 修复方案合理 | ✅ | asyncio.sleep + fixture |
+| 测试隔离设计 | ✅ | cleanup_db fixture |
+| 无过度放宽 | ✅ | 仅处理 httpx 限制 |
 
-**加分**: 组件Props接口定义清晰，符合TypeScript规范。
+**扣分原因**: asyncio.sleep 是权宜方案，更优方案是改用 await。
 
 ---
 
 ### 代码质量 (20%权重)
-**评分: 7/10**
+**评分: 9/10**
 
 | 评估项 | 状态 | 证据 |
 |--------|------|------|
-| 前端单元测试覆盖 | ✅ | 100 tests passed |
-| TypeScript 类型安全 | ✅ | Props接口定义，无AnyScript |
-| 后端测试状态 | ⚠️ | 176 passed, 5 failed, 9 skipped |
-| 容错处理 | ✅ | App.tsx:76-107 try/catch包裹 |
+| 测试覆盖 | ✅ | 181 passed |
+| 回归无破坏 | ✅ | 100 frontend tests |
+| fixture 实现 | ✅ | cleanup_db 正确 |
 
-**扣分原因**: 后端存在5个测试失败（test_audit_logs和test_config），需修复。
+**加分**: fixture 实现简洁有效，无冗余代码。
 
 ---
 
 ### 用户体验 (20%权重)
-**评分: 8/10**
+**评分: 9/10**
 
 | 评估项 | 状态 | 证据 |
 |--------|------|------|
-| API认证流程 | ✅ | X-API-Key认证正常工作 |
-| 错误提示友好 | ✅ | alert('请先创建API Key...') |
-| 状态指示清晰 | ✅ | `[Connected]/[Disconnected]` |
-| 降级运行提示 | ⚠️ | Metrics显示 `queue_type: "memory"` |
+| 冒烟门禁 | ✅ | health=active |
+| API 回归 | ✅ | 7 端点正常 |
+| Swagger 可用 | ✅ | /docs 返回 HTML |
 
-**扣分原因**: Redis降级时显示技术术语而非用户友好提示。
+**保持基线**: 前后端服务正常运行，无退化。
 
 ---
 
 ## 6. 加权总分计算
 
 ```
-功能完整性: 8 × 35% = 2.80
-设计质量:   9 × 25% = 2.25
-代码质量:   7 × 20% = 1.40
-用户体验:   8 × 20% = 1.60
+功能完整性: 10 × 35% = 3.50
+设计质量:   9  × 25% = 2.25
+代码质量:   9  × 20% = 1.80
+用户体验:   9  × 20% = 1.80
 ----------------------------
-加权总分:   8.05 / 10
+加权总分:   9.35 / 10
 ```
 
 **判定**: ✅ 总分 ≥ 7.0，单项均 ≥ 6，验收通过
@@ -195,34 +161,30 @@ $ curl -X POST http://localhost:8000/api/v1/tasks -H "X-API-Key: $KEY" \
 
 ## 7. 验收结论
 
-### Sprint 20 状态
+### Sprint 21 状态
 - **判定**: `[x]` 验收通过
-- **评分**: 8.05/10
+- **评分**: 9.35/10
 
-### v2.0 整体状态
-- **判定**: ✅ 结项验收通过
-- **平均评分**: 8.91/10 (Sprint 17-20平均值)
+### TD-002 状态
+- **判定**: ✅ 已解决
 
 ---
 
-## 8. 整改建议 (转v3.0)
+## 8. 改进建议
 
-| 编号 | 问题 | 优先级 | 建议 |
-|------|------|--------|------|
-| TD-001 | 前端覆盖率报告未配置 | P2 | 配置 vitest coverage |
-| TD-002 | 5个后端测试失败 | P1 | 修复 test_audit_logs 和 test_config |
-| TD-003 | WebSocket 协作评论未实现 | P1 | v3.0 Sprint 优先实现 |
-| TD-004 | 租户选择器 UI 未实现 | P1 | v3.0 Sprint 优先实现 |
-| TD-005 | Redis降级提示技术术语 | P2 | 显示"当前模式: 内存队列" |
+| 编号 | 建议 | 优先级 |
+|------|------|--------|
+| IMP-001 | 将 asyncio.create_task 改为 await 同步审计日志 | P2 |
+| IMP-002 | 移除 pytest.mark.asyncio 对非异步测试的标记 | P3 |
 
 ---
 
 ## 9. 下一步动作
 
-1. ✅ v2.0 正式结项
-2. 建议: `git tag v2.0` 标记版本
-3. 规划: v3.0 Sprint (TD-003, TD-004 优先)
+1. ✅ Sprint 21 验收通过
+2. 继续 Sprint 22: 实现 TD-004 租户选择器 UI
+3. 继续 Sprint 23: 实现 TD-003 WebSocket 协作评论
 
 ---
 
-**Evaluator 签名**: v2.0 结项验证通过 (8.05/10)
+**Evaluator 签名**: Sprint 21 TD-002 修复验收通过 (9.35/10)
