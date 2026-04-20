@@ -27,7 +27,7 @@ describe('App Root Render - Sprint 20 UX', () => {
     render(<App />);
     // 提交按钮存在
     expect(screen.getByRole('button', { name: /提交/i })).toBeInTheDocument();
-    // 高级模式入口存在
+    // 高级模式入口存在（在右上角）
     expect(screen.getByRole('button', { name: /高级/i })).toBeInTheDocument();
   });
 
@@ -48,5 +48,16 @@ describe('App Root Render - Sprint 20 UX', () => {
       // 连接状态显示
       expect(screen.getByText(/\[Connected\]/i)).toBeInTheDocument();
     });
+  });
+
+  it('应当显示设置/API/监控按钮', () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'active' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => [] });
+    render(<App />);
+    // 验证右上角按钮存在
+    expect(screen.getByRole('button', { name: /设置/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /API/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /监控/i })).toBeInTheDocument();
   });
 });

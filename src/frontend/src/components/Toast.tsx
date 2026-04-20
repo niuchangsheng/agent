@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 type ToastType = 'success' | 'error' | 'warning' | 'info';
 
@@ -24,20 +24,37 @@ const typeIcons: Record<ToastType, string> = {
 };
 
 function Toast({ message, type, onClose, duration = 3000 }: ToastProps) {
+  const [isExiting, setIsExiting] = useState(false);
+
   useEffect(() => {
-    const timer = setTimeout(onClose, duration);
-    return () => clearTimeout(timer);
+    // 显示一段时间后开始退出动画
+    const exitTimer = setTimeout(() => {
+      setIsExiting(true);
+    }, duration - 200); // 留 200ms 给退出动画
+
+    // 退出动画完成后调用 onClose
+    const closeTimer = setTimeout(onClose, duration);
+
+    return () => {
+      clearTimeout(exitTimer);
+      clearTimeout(closeTimer);
+    };
   }, [duration, onClose]);
 
   return (
     <div
       role="alert"
-      className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-xl border backdrop-blur-md shadow-lg flex items-center gap-3 animate-fade-in ${typeStyles[type]}`}
+      className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-xl border backdrop-blur-md shadow-lg flex items-center gap-3 ${
+        isExiting ? 'animate-fade-out' : 'animate-fade-in'
+      } ${typeStyles[type]}`}
     >
       <span className="text-lg">{typeIcons[type]}</span>
       <span className="text-sm font-medium">{message}</span>
       <button
-        onClick={onClose}
+        onClick={() => {
+          setIsExiting(true);
+          setTimeout(onClose, 200);
+        }}
         className="ml-2 text-slate-400 hover:text-slate-200 transition-colors"
         aria-label="关闭通知"
       >

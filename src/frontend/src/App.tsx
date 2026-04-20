@@ -33,6 +33,7 @@ function App() {
   const [panelContent, setPanelContent] = useState<'settings' | 'apikeys' | 'metrics'>('settings');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   useEffect(() => {
     const apiKey = localStorage.getItem('api_key');
@@ -80,6 +81,15 @@ function App() {
     setToast({ message, type });
   };
 
+  // 视图切换动画
+  const switchView = (newMode: ViewMode) => {
+    setIsTransitioning(true);
+    setTimeout(() => {
+      setViewMode(newMode);
+      setIsTransitioning(false);
+    }, 150);
+  };
+
   // Handle task submission from SingleInputView
   const handleTaskSubmit = async (objective: string) => {
     try {
@@ -112,8 +122,11 @@ function App() {
         const task = await response.json();
         setTasks(prev => [...prev, task]);
         setCurrentTaskId(task.id);
-        setViewMode('execution');
         showToast('任务创建成功', 'success');
+        // 带动画切换到执行视图
+        setTimeout(() => {
+          switchView('execution');
+        }, 300);
       } else {
         const error = await response.json();
         console.error('Failed to create task:', error);
@@ -131,30 +144,25 @@ function App() {
   if (viewMode === 'input') {
     return (
       <>
-        <SingleInputView
-          onSubmit={handleTaskSubmit}
-          onSettingsClick={() => {
-            setPanelContent('settings');
-            setPanelOpen(true);
-          }}
-          onApiKeysClick={() => {
-            setPanelContent('apikeys');
-            setPanelOpen(true);
-          }}
-          onMetricsClick={() => {
-            setPanelContent('metrics');
-            setPanelOpen(true);
-          }}
-          isSubmitting={isSubmitting}
-        />
-        {/* 高级模式按钮 */}
-        <button
-          onClick={() => setViewMode('advanced')}
-          className="fixed bottom-4 right-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm transition-colors"
-          aria-label="高级"
-        >
-          高级模式
-        </button>
+        <div className={`transition-opacity duration-150 ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}>
+          <SingleInputView
+            onSubmit={handleTaskSubmit}
+            onSettingsClick={() => {
+              setPanelContent('settings');
+              setPanelOpen(true);
+            }}
+            onApiKeysClick={() => {
+              setPanelContent('apikeys');
+              setPanelOpen(true);
+            }}
+            onMetricsClick={() => {
+              setPanelContent('metrics');
+              setPanelOpen(true);
+            }}
+            onAdvancedClick={() => switchView('advanced')}
+            isSubmitting={isSubmitting}
+          />
+        </div>
         {/* 侧边面板 */}
         <SidePanel
           isOpen={panelOpen}
@@ -180,26 +188,31 @@ function App() {
   if (viewMode === 'execution' && currentTaskId) {
     return (
       <>
-        <LiveExecutionView
-          taskId={currentTaskId}
-          onComplete={() => setViewMode('input')}
-          isCompleted={tasks.find(t => t.id === currentTaskId)?.status === 'COMPLETED'}
-        />
-        {/* 高级模式按钮 */}
-        <button
-          onClick={() => setViewMode('advanced')}
-          className="fixed bottom-4 right-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm transition-colors"
-          aria-label="高级"
-        >
-          高级模式
-        </button>
+        <div className={`transition-opacity duration-150 ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}>
+          <LiveExecutionView
+            taskId={currentTaskId}
+            onComplete={() => switchView('input')}
+            isCompleted={tasks.find(t => t.id === currentTaskId)?.status === 'COMPLETED'}
+          />
+          {/* 高级模式按钮 */}
+          <button
+            onClick={() => switchView('advanced')}
+            className="fixed top-4 right-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm transition-colors flex items-center gap-2"
+            aria-label="高级"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 018.25 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 8.25h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+            </svg>
+            <span className="text-slate-400">高级</span>
+          </button>
+        </div>
       </>
     );
   }
 
   // Advanced mode - original dashboard
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-300 p-8 flex flex-col items-center">
+    <div className={`min-h-screen bg-slate-950 text-slate-300 p-8 flex flex-col items-center transition-opacity duration-150 ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}>
       <div className="w-full max-w-6xl mb-8 flex justify-between items-end border-b border-slate-800 pb-4">
         <div>
           <h1 className="text-3xl font-bold text-cyan-400 font-mono tracking-wider">SECA Core Control</h1>
@@ -214,17 +227,20 @@ function App() {
           </span>
           {/* 返回简单模式按钮 */}
           <button
-            onClick={() => setViewMode('input')}
-            className="px-3 py-1 bg-cyan-600 text-white rounded-lg transition-colors hover:bg-cyan-500"
+            onClick={() => switchView('input')}
+            className="px-3 py-1 bg-cyan-600 text-white rounded-lg transition-colors hover:bg-cyan-500 flex items-center gap-2"
           >
-            简单模式
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 17l-5-5m0 0l5-5m-5 5h12" />
+            </svg>
+            <span>简单模式</span>
           </button>
         </div>
       </div>
 
       {/* 保留原有 Dashboard 组件 */}
       {currentTaskId && (
-        <div className="w-full max-w-6xl">
+        <div className="w-full max-w-6xl animate-view-transition">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <Dashboard taskId={currentTaskId.toString()} />
             <PlaybackTree taskId={currentTaskId.toString()} />

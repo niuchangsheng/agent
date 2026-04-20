@@ -7,6 +7,7 @@ describe('SingleInputView', () => {
   const mockOnSettingsClick = vi.fn();
   const mockOnApiKeysClick = vi.fn();
   const mockOnMetricsClick = vi.fn();
+  const mockOnAdvancedClick = vi.fn();
 
   it('test_input_centered_on_screen', () => {
     render(
@@ -15,6 +16,7 @@ describe('SingleInputView', () => {
         onSettingsClick={mockOnSettingsClick}
         onApiKeysClick={mockOnApiKeysClick}
         onMetricsClick={mockOnMetricsClick}
+        onAdvancedClick={mockOnAdvancedClick}
       />
     );
 
@@ -31,6 +33,7 @@ describe('SingleInputView', () => {
         onSettingsClick={mockOnSettingsClick}
         onApiKeysClick={mockOnApiKeysClick}
         onMetricsClick={mockOnMetricsClick}
+        onAdvancedClick={mockOnAdvancedClick}
       />
     );
 
@@ -47,17 +50,20 @@ describe('SingleInputView', () => {
         onSettingsClick={mockOnSettingsClick}
         onApiKeysClick={mockOnApiKeysClick}
         onMetricsClick={mockOnMetricsClick}
+        onAdvancedClick={mockOnAdvancedClick}
       />
     );
 
-    // 验证右上角图标可见
+    // 验证右上角图标可见（包括高级按钮）
     const settingsButton = screen.getByRole('button', { name: /设置/i });
     const apiKeysButton = screen.getByRole('button', { name: /API/i });
     const metricsButton = screen.getByRole('button', { name: /监控/i });
+    const advancedButton = screen.getByRole('button', { name: /高级/i });
 
     expect(settingsButton).toBeInTheDocument();
     expect(apiKeysButton).toBeInTheDocument();
     expect(metricsButton).toBeInTheDocument();
+    expect(advancedButton).toBeInTheDocument();
   });
 
   it('test_submit_redirects_to_execution', () => {
@@ -67,6 +73,7 @@ describe('SingleInputView', () => {
         onSettingsClick={mockOnSettingsClick}
         onApiKeysClick={mockOnApiKeysClick}
         onMetricsClick={mockOnMetricsClick}
+        onAdvancedClick={mockOnAdvancedClick}
       />
     );
 
@@ -80,5 +87,25 @@ describe('SingleInputView', () => {
 
     // 验证 onSubmit 被调用
     expect(mockOnSubmit).toHaveBeenCalledWith('Fix bug in auth module');
+  });
+
+  it('test_advanced_button_in_top_right', () => {
+    render(
+      <SingleInputView
+        onSubmit={mockOnSubmit}
+        onSettingsClick={mockOnSettingsClick}
+        onApiKeysClick={mockOnApiKeysClick}
+        onMetricsClick={mockOnMetricsClick}
+        onAdvancedClick={mockOnAdvancedClick}
+      />
+    );
+
+    // 验证高级按钮在右上角图标组中
+    const advancedButton = screen.getByRole('button', { name: /高级/i });
+    expect(advancedButton).toBeInTheDocument();
+
+    // 点击高级按钮
+    fireEvent.click(advancedButton);
+    expect(mockOnAdvancedClick).toHaveBeenCalled();
   });
 });

@@ -5,6 +5,7 @@ interface SingleInputViewProps {
   onSettingsClick: () => void;
   onApiKeysClick: () => void;
   onMetricsClick: () => void;
+  onAdvancedClick: () => void;
   isSubmitting?: boolean;
 }
 
@@ -30,11 +31,18 @@ const ChartIcon = () => (
   </svg>
 );
 
+const GridIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 018.25 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 8.25h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+  </svg>
+);
+
 function SingleInputView({
   onSubmit,
   onSettingsClick,
   onApiKeysClick,
   onMetricsClick,
+  onAdvancedClick,
   isSubmitting = false,
 }: SingleInputViewProps) {
   const [objective, setObjective] = useState('');
@@ -61,8 +69,8 @@ function SingleInputView({
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-300 flex flex-col items-center justify-center p-8">
-      {/* 右上角图标 */}
+    <div className="min-h-screen bg-slate-950 text-slate-300 flex flex-col items-center justify-center p-8 animate-view-transition">
+      {/* 右上角图标组 */}
       <div className="fixed top-4 right-4 flex gap-3">
         <button
           onClick={onSettingsClick}
@@ -88,6 +96,17 @@ function SingleInputView({
           <ChartIcon />
           <span className="text-slate-400">监控</span>
         </button>
+        {/* 分隔线 */}
+        <div className="w-px h-8 bg-slate-700" />
+        {/* 高级模式按钮 */}
+        <button
+          onClick={onAdvancedClick}
+          className="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm flex items-center gap-2 transition-colors"
+          aria-label="高级模式"
+        >
+          <GridIcon />
+          <span className="text-slate-400">高级</span>
+        </button>
       </div>
 
       {/* 主标题 */}
@@ -102,7 +121,7 @@ function SingleInputView({
 
       {/* API Key 引导提示 */}
       {!hasApiKey && (
-        <div className="w-full max-w-2xl mb-4 p-3 bg-amber-900/30 border border-amber-500/50 rounded-xl text-amber-300 text-sm flex items-center gap-2">
+        <div className="w-full max-w-2xl mb-4 p-3 bg-amber-900/30 border border-amber-500/50 rounded-xl text-amber-300 text-sm flex items-center gap-2 animate-fade-in">
           <span className="text-lg">⚠</span>
           <span>首次使用？点击右上角 <strong>API</strong> 按钮创建 API Key</span>
         </div>
@@ -123,7 +142,9 @@ function SingleInputView({
         <button
           onClick={handleSubmit}
           disabled={!objective.trim() || isSubmitting}
-          className="px-8 py-3 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-medium rounded-xl transition-colors flex items-center gap-2 shadow-lg shadow-cyan-500/20"
+          className={`px-8 py-3 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-medium rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-cyan-500/20 ${
+            isSubmitting ? '' : 'hover:shadow-cyan-500/30'
+          }`}
         >
           {isSubmitting ? (
             <>

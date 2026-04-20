@@ -48,13 +48,31 @@ describe('App Integration - Sprint 20', () => {
     });
   });
 
-  it('test_existing_dashboard_accessible_as_advanced_mode', async () => {
+  it('test_advanced_button_in_top_right_corner', async () => {
     render(<App />);
 
     await waitFor(() => {
-      // 验证"高级模式"入口存在 (保留原有 Dashboard)
+      // 验证"高级模式"入口在右上角（而非右下角）
       const advancedButton = screen.getByRole('button', { name: /高级/i });
       expect(advancedButton).toBeInTheDocument();
+    });
+  });
+
+  it('test_clicking_advanced_switches_to_dashboard', async () => {
+    render(<App />);
+
+    await waitFor(() => {
+      const advancedButton = screen.getByRole('button', { name: /高级/i });
+      expect(advancedButton).toBeInTheDocument();
+    });
+
+    // 点击高级模式
+    const advancedButton = screen.getByRole('button', { name: /高级/i });
+    fireEvent.click(advancedButton);
+
+    await waitFor(() => {
+      // 验证进入高级模式
+      expect(screen.getByText(/SECA Core Control/i)).toBeInTheDocument();
     });
   });
 });
