@@ -261,6 +261,16 @@
 - [ ] 协作评论组件、WebSocket 实时推送、@提及通知
 - [x] 前端单元测试通过 (20 tests)
 
+### v3.0 (进行中)
+
+**Sprint 21: 后端测试修复 — TD-002 技术债务偿还 — ✅ 完成**
+- [x] 修复 test_audit_log_captures_user_agent
+- [x] 修复 test_audit_log_captures_api_key_id
+- [x] 修复 test_write_operation_creates_audit_log
+- [x] 修复 test_audit_log_full_payload
+- [x] 修复 test_config_isolation
+- [x] 全量测试通过 (181 passed)
+
 ## 整体项目竣工结项标准 (Definition of Done)
 
 ### v1.0 DoD (✅ 已完成)

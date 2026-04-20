@@ -5,6 +5,18 @@ from app.models import Project, ProjectConfig
 from app.main import app
 
 
+@pytest.fixture(autouse=True)
+async def cleanup_db():
+    """每个测试前清理项目配置数据"""
+    from app.database import engine
+    async with engine.begin() as conn:
+        from sqlalchemy import text
+        # 清理所有项目配置
+        await conn.execute(text("DELETE FROM project_config"))
+        await conn.execute(text("DELETE FROM project"))
+    yield
+
+
 @pytest.mark.asyncio
 class TestProjectConfig:
     """Sprint 6: 配置管理中心测试套件"""
