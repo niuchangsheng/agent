@@ -13,10 +13,72 @@ interface TaskStatus {
   progress_percent: number;
 }
 
+interface TraceRecord {
+  id: number;
+  agent_role: string;
+  perception_log: string;
+  reasoning_log: string;
+  applied_patch: string;
+  is_success: boolean;
+  created_at: string;
+}
+
 function LiveExecutionView({ taskId, onComplete, isCompleted = false }: LiveExecutionViewProps) {
   const [status, setStatus] = useState<string>(isCompleted ? 'COMPLETED' : 'RUNNING');
   const [output, setOutput] = useState<string[]>([]);
   const [loading, setLoading] = useState(!isCompleted);
+
+  // 格式化事件内容为可读文本
+  const formatEventContent = (eventType: string, data: any): string => {
+    switch (eventType) {
+      case 'perception':
+        return `🧠 [感知] 目标: ${data.objective || ''} | 项目: ${data.project_path || ''}`;
+      case 'decision':
+        return `💭 [决策] ${data.action || ''} | 原因: ${data.reasoning || ''}`;
+      case 'action':
+        const successIcon = data.success ? '✓' : '✕';
+        return `${successIcon} [执行] ${data.action_type || data.action || ''} | 结果: ${data.summary || data.result || ''}`;
+      case 'progress':
+        return `📊 [进度] ${data.percent}% | ${data.message || ''}`;
+      case 'complete':
+        return `✅ [完成] 任务执行成功`;
+      case 'error':
+        return `❌ [错误] ${data.error || data.message || ''}`;
+      default:
+        return `[${eventType}] ${JSON.stringify(data).slice(0, 100)}`;
+    }
+  };
+
+  // 获取已完成任务的 Trace 记录
+  const fetchTraceHistory = async () => {
+    try {
+      const apiKey = localStorage.getItem('api_key') || '';
+      const res = await fetch(`/api/v1/tasks/${taskId}/traces`, {
+        headers: { 'X-API-Key': apiKey }
+      });
+      if (res.ok) {
+        const traces: TraceRecord[] = await res.json();
+        if (traces.length > 0) {
+          const historyOutput = traces.map(trace => {
+            const perception = trace.perception_log ? JSON.parse(trace.perception_log) : {};
+            const decision = trace.reasoning_log ? JSON.parse(trace.reasoning_log) : {};
+            const action = trace.applied_patch ? JSON.parse(trace.applied_patch) : {};
+
+            return [
+              formatEventContent('perception', perception),
+              formatEventContent('decision', decision),
+              formatEventContent('action', action)
+            ];
+          }).flat();
+
+          setOutput(historyOutput);
+          setLoading(false);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch trace history:', err);
+    }
+  };
 
   // 首先获取任务状态
   useEffect(() => {
@@ -24,21 +86,15 @@ function LiveExecutionView({ taskId, onComplete, isCompleted = false }: LiveExec
       try {
         const apiKey = localStorage.getItem('api_key') || '';
         const res = await fetch(`/api/v1/tasks/${taskId}`, {
-          headers: {
-            'X-API-Key': apiKey
-          }
+          headers: { 'X-API-Key': apiKey }
         });
         if (res.ok) {
           const task: TaskStatus = await res.json();
           setStatus(task.status);
 
-          // 如果任务已完成，显示完成消息
+          // 如果任务已完成，获取 Trace 历史
           if (task.status === 'COMPLETED') {
-            setOutput([
-              `任务执行完成`,
-              `状态: ${task.status_message}`,
-              `进度: ${task.progress_percent}%`
-            ]);
+            await fetchTraceHistory();
             setLoading(false);
           }
         }
@@ -47,14 +103,12 @@ function LiveExecutionView({ taskId, onComplete, isCompleted = false }: LiveExec
       }
     };
 
-    if (!isCompleted) {
-      fetchTaskStatus();
-    }
+    fetchTaskStatus();
   }, [taskId, isCompleted]);
 
   // SSE 连接（仅在任务运行中）
   useEffect(() => {
-    if (isCompleted || status === 'COMPLETED') {
+    if (status === 'COMPLETED') {
       return;
     }
 
@@ -66,16 +120,21 @@ function LiveExecutionView({ taskId, onComplete, isCompleted = false }: LiveExec
         try {
           const data = JSON.parse(event.data);
           setLoading(false);
-          if (data.type === 'status') {
+
+          // 处理各种事件类型
+          const eventType = data.type || event.type;
+          const eventContent = formatEventContent(eventType, data);
+
+          if (eventType === 'status') {
             setStatus(data.content || 'RUNNING');
-          } else if (data.type === 'perception' || data.type === 'reasoning' || data.type === 'action') {
-            setOutput(prev => [...prev, data.content || data.message || '']);
-          } else if (data.type === 'complete') {
+          } else if (eventType !== 'heartbeat') {
+            setOutput(prev => [...prev, eventContent]);
+          }
+
+          if (eventType === 'complete') {
             setStatus('COMPLETED');
-            setOutput(prev => [...prev, '任务执行完成']);
-          } else if (data.type === 'error') {
+          } else if (eventType === 'error') {
             setStatus('FAILED');
-            setOutput(prev => [...prev, `错误: ${data.error || data.message || '未知错误'}`]);
           }
         } catch (e) {
           console.warn('Failed to parse SSE event:', e);
@@ -95,7 +154,8 @@ function LiveExecutionView({ taskId, onComplete, isCompleted = false }: LiveExec
               const task: TaskStatus = await res.json();
               if (task.status === 'COMPLETED') {
                 setStatus('COMPLETED');
-                setOutput(prev => [...prev, '任务执行完成']);
+                // 获取 Trace 历史
+                await fetchTraceHistory();
               }
             }
           } catch {}
@@ -108,7 +168,7 @@ function LiveExecutionView({ taskId, onComplete, isCompleted = false }: LiveExec
         eventSource.close();
       };
     }
-  }, [taskId, isCompleted, status]);
+  }, [taskId, status]);
 
   const statusColor = status === 'COMPLETED' ? 'bg-emerald-500' : status === 'FAILED' ? 'bg-red-500' : 'bg-cyan-500';
 
@@ -147,16 +207,24 @@ function LiveExecutionView({ taskId, onComplete, isCompleted = false }: LiveExec
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
             </svg>
-            <span>等待 Agent 输出...</span>
+            <span>Agent 正在思考...</span>
           </div>
         ) : output.length === 0 ? (
           <div className="text-slate-500 text-center py-8">
-            无输出记录
+            无执行记录
           </div>
         ) : (
-          <div className="font-mono text-sm space-y-2">
+          <div className="font-mono text-sm space-y-3">
             {output.map((line, idx) => (
-              <div key={idx} className="text-slate-300">{line}</div>
+              <div key={idx} className={`py-2 px-3 rounded ${
+                line.includes('✓') || line.includes('✅') ? 'bg-emerald-900/20 border-l-2 border-emerald-500' :
+                line.includes('✕') || line.includes('❌') ? 'bg-red-900/20 border-l-2 border-red-500' :
+                line.includes('🧠') ? 'bg-cyan-900/20 border-l-2 border-cyan-500' :
+                line.includes('💭') ? 'bg-amber-900/20 border-l-2 border-amber-500' :
+                'bg-slate-800/30 border-l-2 border-slate-500'
+              }`}>
+                {line}
+              </div>
             ))}
           </div>
         )}
