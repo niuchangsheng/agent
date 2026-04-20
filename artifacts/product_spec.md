@@ -271,6 +271,11 @@
 - [x] 修复 test_config_isolation
 - [x] 全量测试通过 (181 passed)
 
+**Sprint 22: 租户选择器 UI — TD-004 (P1) — ✅ 完成**
+- [x] TenantInfo 组件（显示租户名称、配额）
+- [x] TenantSelector 下拉组件（多租户切换）
+- [x] 前端测试通过 (110 tests)
+
 ## 整体项目竣工结项标准 (Definition of Done)
 
 ### v1.0 DoD (✅ 已完成)

@@ -1,111 +1,131 @@
-# Sprint 21 验收合同：后端测试修复 — TD-002 技术债务偿还
+# Sprint 22 验收合同：租户选择器 UI — TD-004 (P1)
 
 ## 合同签署方
-- **需求方**: qa_feedback.md TD-002 (P1 优先级)
+- **需求方**: handoff.md TD-004 (P1 优先级)
 - **执行方**: Generator (TDD 工程师)
 - **验收方**: Evaluator (QA 评审官)
 
 ## 功能概述
-本 Sprint 修复 v2.0 QA 验收中发现的 5 个后端测试失败：
-1. `test_audit_log_captures_user_agent` - User-Agent 未正确捕获
-2. `test_audit_log_captures_api_key_id` - api_key_id 未正确捕获
-3. `test_write_operation_creates_audit_log` - api_key_id 为 None
-4. `test_audit_log_full_payload` - api_key_id + User-Agent 问题
-5. `test_config_isolation` - 409 Conflict 冲突
+本 Sprint 实现前端租户选择器 UI，让用户能够：
+1. 查看当前所属租户信息（名称、配额）
+2. 在多租户环境下切换租户（如果有权限）
+3. 显示租户配额使用情况
 
 ---
 
-## Part A: 审计日志异步任务修复
+## Part A: TenantInfo 组件
 
-### 问题根因分析
-当前审计日志使用 `asyncio.create_task()` 后台保存，导致测试检查时日志可能尚未写入。
-
-### 后端单元测试 (`src/backend/tests/test_audit_logs.py`) - 修复验证
+### 前端单元测试 (`src/frontend/src/components/__tests__/TenantInfo.test.tsx`) - 4 tests
 
 | 测试项 | 验收标准 | 状态 |
 |--------|----------|------|
-| `test_audit_log_captures_api_key_id` | api_key_id 正确捕获且非 None | [ ] |
-| `test_write_operation_creates_audit_log` | api_key_id 非 None | [ ] |
-| `test_audit_log_full_payload` | api_key_id + User-Agent 正确捕获 | [ ] |
+| `test_tenant_info_displays_name` | 显示租户名称 | [ ] |
+| `test_tenant_info_displays_quota` | 显示配额信息（任务数、存储） | [ ] |
+| `test_tenant_info_fetches_from_api` | 从 `/api/v1/tenants/me` 获取数据 | [ ] |
+| `test_tenant_info_handles_error` | API 错误时显示友好提示 | [ ] |
 
-### 修复方案
-1. 将 `asyncio.create_task()` 改为同步 await 确保日志写入完成
-2. 或在测试中添加 `await asyncio.sleep(0.1)` 等待后台任务
+### TenantInfo 设计要点
+
+```tsx
+interface TenantInfoProps {
+  apiKey: string;
+}
+
+interface Tenant {
+  id: number;
+  name: string;
+  slug: string;
+  quota_tasks: number;
+  quota_storage_mb: number;
+  quota_api_calls: number;
+  is_active: boolean;
+}
+```
+
+- 位置: 右上角或 SidePanel 顶部
+- 显示: 租户名称 + 配额使用率（如有数据）
+- 样式: Glassmorphism 风格，青色边框
 
 ---
 
-## Part B: User-Agent 捕获修复
+## Part B: TenantSelector 下拉组件
 
-### 问题根因分析
-httpx ASGITransport 覆盖自定义 User-Agent，导致测试期望值不匹配。
-
-### 修复方案
-测试层面修复：接受 httpx 的 User-Agent 或使用 follow_redirects=False
+### 前端单元测试 (`src/frontend/src/components/__tests__/TenantSelector.test.tsx`) - 3 tests
 
 | 测试项 | 验收标准 | 状态 |
 |--------|----------|------|
-| `test_audit_log_captures_user_agent` | User-Agent 捕获非空即可 | [ ] |
+| `test_selector_dropdown_visible` | 点击后显示下拉列表 | [ ] |
+| `test_selector_lists_available_tenants` | 显示可切换的租户列表 | [ ] |
+| `test_selector_switch_updates_state` | 切换租户后更新当前租户状态 | [ ] |
+
+### TenantSelector 设计要点
+
+- 如果用户只有一个租户：只显示 TenantInfo
+- 如果用户有多个租户：显示下拉选择器
+- 切换租户：更新 localStorage 中的 tenant_id
 
 ---
 
-## Part C: 配置隔离测试数据库清理
+## Part C: App.tsx 集成
 
-### 问题根因分析
-测试未清理数据库，导致重复运行时 409 Conflict。
-
-### 修复方案
-每个测试开始时清理相关表数据。
+### 前端单元测试 (`src/frontend/src/__tests__/App.tenant.test.tsx`) - 2 tests
 
 | 测试项 | 验收标准 | 状态 |
 |--------|----------|------|
-| `test_config_isolation` | 返回 200 而非 409 | [ ] |
+| `test_tenant_info_in_header` | 右上角显示租户信息 | [ ] |
+| `test_tenant_switch_refreshes_data` | 切换租户后刷新任务列表 | [ ] |
 
 ---
 
 ## 实施步骤
 
-### Step 1: 🔴 Red - 确认测试失败状态
-运行测试确认当前失败状态：
-```bash
-pytest tests/test_audit_logs.py tests/test_config.py -v
-```
+### Step 1: 🔴 Red - 编写测试文件
+创建测试文件:
+- `TenantInfo.test.tsx` (4 tests)
+- `TenantSelector.test.tsx` (3 tests)
+- `App.tenant.test.tsx` (2 tests)
 
-### Step 2: 🟢 Green - 修复问题
-1. 修复 `_save_audit_log` 使用 await 替代 create_task
-2. 修复测试期望值（User-Agent）
-3. 添加数据库清理 fixture
+**预期结果**: 所有测试失败 (组件未创建)
+
+### Step 2: 🟢 Green - 实现组件
+创建组件:
+- `TenantInfo.tsx`
+- `TenantSelector.tsx`
+- 修改 `App.tsx` 集成租户显示
 
 ### Step 3: 🔵 Refactor - 回归测试
-运行全量测试确保未破坏其他功能。
+- 运行前端 Vitest 全量测试
+- 确保现有组件未破坏
 
 ---
 
 ## 完成定义
 
-- [x] test_audit_log_captures_user_agent 通过
-- [x] test_audit_log_captures_api_key_id 通过
-- [x] test_write_operation_creates_audit_log 通过
-- [x] test_audit_log_full_payload 通过
-- [x] test_config_isolation 通过
-- [x] 全量测试通过 (181 passed, 9 skipped)
+- [x] TenantInfo 测试全部通过 (4 tests)
+- [x] TenantSelector 测试全部通过 (3 tests)
+- [x] App.tsx 集成完成
+- [x] 前端全量测试通过 (110 tests)
+- [x] handoff.md 更新完成
 
 ## 测试证据
 
 ```bash
-$ pytest --tb=short -q
-181 passed, 9 skipped, 8 warnings in 44.90s
+$ npm test
+ Test Files  20 passed (20)
+      Tests  110 passed (110)
 ```
 
-## 修复内容
+## 实现内容
 
-### 修复 1: 审计日志异步任务等待
-在测试中添加 `await asyncio.sleep(0.1)` 等待后台审计日志任务完成。
+### TenantInfo 组件
+- 显示租户名称和配额信息
+- 从 `/api/v1/tenants/me` 获取数据
+- 错误处理和加载状态
 
-### 修复 2: User-Agent 期望值放宽
-httpx ASGITransport 会覆盖自定义 User-Agent，修改测试只验证非空而非精确匹配。
-
-### 修复 3: 配置测试数据库清理
-添加 pytest fixture `cleanup_db` 在每个测试前清理 project_config 和 project 表数据。
+### TenantSelector 组件
+- 多租户下拉选择器
+- 点击切换租户
+- 更新 localStorage tenant_id
 
 ## Generator 签名
-**Generator**: Sprint 21 后端测试修复完成 ✅ - 181 tests passed
+**Generator**: Sprint 22 租户选择器 UI 完成 ✅ - 110 tests passed
