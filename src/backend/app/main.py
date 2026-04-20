@@ -360,7 +360,7 @@ async def stream_task_events(task_id: int):
 
     async def event_generator():
         try:
-            for event_str in broadcaster.generate_stream(connection):
+            async for event_str in broadcaster.generate_stream(connection):
                 yield event_str
         finally:
             await broadcaster.unsubscribe(connection)
