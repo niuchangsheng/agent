@@ -8,6 +8,7 @@ import ConfigPanel from './components/ConfigPanel';
 import TaskQueueDashboard from './components/TaskQueueDashboard';
 import ApiKeyManager from './components/ApiKeyManager';
 import MetricsDashboard from './components/MetricsDashboard';
+import TenantInfo from './components/TenantInfo';
 import Toast from './components/Toast';
 
 type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -36,9 +37,14 @@ function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [apiKey, setApiKey] = useState<string>('');
 
   useEffect(() => {
-    const apiKey = localStorage.getItem('api_key');
+    // 获取 API Key
+    const storedApiKey = localStorage.getItem('api_key');
+    if (storedApiKey) {
+      setApiKey(storedApiKey);
+    }
 
     fetch('/api/v1/health')
       .then(res => res.json())
@@ -146,6 +152,10 @@ function App() {
   if (viewMode === 'input') {
     return (
       <>
+        {/* 租户信息显示在右上角左侧 */}
+        <div className="fixed top-4 left-4">
+          <TenantInfo apiKey={apiKey} />
+        </div>
         <div className={`transition-opacity duration-150 ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}>
           <SingleInputView
             onSubmit={handleTaskSubmit}

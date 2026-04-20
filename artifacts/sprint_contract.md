@@ -103,29 +103,9 @@ interface Tenant {
 
 - [x] TenantInfo 测试全部通过 (4 tests)
 - [x] TenantSelector 测试全部通过 (3 tests)
-- [x] App.tsx 集成完成
-- [x] 前端全量测试通过 (110 tests)
-- [x] handoff.md 更新完成
-
-## 测试证据
-
-```bash
-$ npm test
- Test Files  20 passed (20)
-      Tests  110 passed (110)
-```
-
-## 实现内容
-
-### TenantInfo 组件
-- 显示租户名称和配额信息
-- 从 `/api/v1/tenants/me` 获取数据
-- 错误处理和加载状态
-
-### TenantSelector 组件
-- 多租户下拉选择器
-- 点击切换租户
-- 更新 localStorage tenant_id
+- [x] **App.tsx 集成完成 — ✅ 修复完成**
+- [x] 前端全量测试通过 (112 tests)
+- [x] **App.tenant.test.tsx — ✅ 创建并通过**
 
 ## Generator 签名
-**Generator**: Sprint 22 租户选择器 UI 完成 ✅ - 110 tests passed
+**状态**: ✅ 打回修复完成，提交 QA 评审

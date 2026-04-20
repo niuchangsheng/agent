@@ -26,6 +26,10 @@ function TenantInfo({ apiKey }: TenantInfoProps) {
       return;
     }
 
+    // Reset state when apiKey becomes available
+    setLoading(true);
+    setError(null);
+
     fetch('/api/v1/tenants/me', {
       headers: {
         'X-API-Key': apiKey

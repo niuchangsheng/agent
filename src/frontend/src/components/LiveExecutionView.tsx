@@ -194,7 +194,7 @@ function LiveExecutionView({ taskId, onComplete, isCompleted = false }: LiveExec
       {/* 状态栏 */}
       <div className="flex justify-between items-center mb-4 px-4">
         <div className="flex items-center gap-3">
-          <span className={`px-3 py-1 rounded-full text-sm font-mono ${statusColor}`}>
+          <span data-testid="status-indicator" className={`px-3 py-1 rounded-full text-sm font-mono ${statusColor}`}>
             {status}
           </span>
           <span className="text-slate-500">Task #{taskId}</span>
@@ -211,7 +211,7 @@ function LiveExecutionView({ taskId, onComplete, isCompleted = false }: LiveExec
       </div>
 
       {/* 输出面板 */}
-      <div className="flex-1 mx-4 p-4 bg-slate-900/80 backdrop-blur border border-slate-700 rounded-xl overflow-auto">
+      <div data-testid="streaming-output" className="flex-1 mx-4 p-4 bg-slate-900/80 backdrop-blur border border-slate-700 rounded-xl overflow-auto">
         {loading && output.length === 0 ? (
           <div className="text-center py-8 text-slate-500">
             <svg className="w-8 h-8 mx-auto animate-spin text-cyan-400 mb-3" fill="none" viewBox="0 0 24 24">
