@@ -9,7 +9,9 @@
       "Read(*)",
       "Agent(*)",
       "TaskStop(*)",
-      "TaskOutput(*)"
+      "TaskOutput(*)",
+      "WebFetch(domain:claude.ai)",
+      "WebSearch"
     ]
   }
 }
